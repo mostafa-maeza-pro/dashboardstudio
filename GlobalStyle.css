@@ -862,7 +862,7 @@ body.dark-mode #ui-modal-title-text { color: #ffffff; }
 .studio-popover-panel.anchored-subtitle.is-active {
     opacity: 1;
     pointer-events: auto;
-    transform: translateY(6%) translateX(-100%);
+    transform: translateY(6%) translateX(-410%);
 }
 
 .studio-popover-header {
