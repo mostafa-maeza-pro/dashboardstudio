@@ -174,4 +174,75 @@ function bindChartInteractiveEvents() {
             } 
         }); 
     }); 
+	
+	// ============================================================================
+// MODAL ZOOM & ENLARGEMENT SYSTEM (Add to PlatformRuntime.js)
+// ============================================================================
+
+let activeModalChartInstance = null;
+
+function bindModalEvents(getChartInstanceFn) {
+    const modal = document.getElementById('ui-global-enlargement-modal');
+    const modalBody = document.getElementById('ui-modal-body-content');
+    const modalTitle = document.getElementById('ui-modal-title-text');
+    const modalCloseBtn = document.getElementById('ui-modal-close-btn');
+
+    // Close Routine
+    const closeModal = () => {
+        if (!modal) return;
+        modal.classList.remove('is-active');
+        document.body.classList.remove('modal-open');
+        if (activeModalChartInstance) {
+            activeModalChartInstance.destroy();
+            activeModalChartInstance = null;
+        }
+        if (modalBody) modalBody.innerHTML = '';
+    };
+
+    if (modalCloseBtn) modalCloseBtn.onclick = closeModal;
+
+    // Zoom Button Delegation
+    document.addEventListener('click', (e) => {
+        const zoomBtn = e.target.closest('.ui-chassis-zoom-trigger');
+        if (!zoomBtn || !modal || !modalBody) return;
+
+        const targetId = zoomBtn.getAttribute('data-component-target');
+        const chassis = zoomBtn.closest('.ui-proposal-chassis');
+        if (!chassis) return;
+
+        const titleText = chassis.querySelector('.ui-chassis-title')?.textContent || 'Chart View';
+        if (modalTitle) modalTitle.textContent = titleText;
+
+        // Clean existing modal chart
+        if (activeModalChartInstance) {
+            activeModalChartInstance.destroy();
+            activeModalChartInstance = null;
+        }
+
+        // Clone chassis body content
+        const bodyContent = chassis.querySelector('.ui-chassis-body');
+        if (!bodyContent) return;
+        modalBody.innerHTML = bodyContent.innerHTML;
+
+        modal.classList.add('is-active');
+        document.body.classList.add('modal-open');
+
+        // Re-instantiate Chart.js canvas in Modal
+        const modalCanvas = modalBody.querySelector('canvas');
+        const origChart = getChartInstanceFn ? getChartInstanceFn(targetId) : null;
+
+        if (modalCanvas && origChart) {
+            modalCanvas.id = targetId + '_modal_canvas';
+            activeModalChartInstance = new Chart(modalCanvas.getContext('2d'), {
+                type: origChart.config.type,
+                data: JSON.parse(JSON.stringify(origChart.config.data)),
+                options: {
+                    ...origChart.config.options,
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+        }
+    });
+}
 }
