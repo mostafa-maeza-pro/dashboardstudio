@@ -350,3 +350,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
+
+
+
+// ============================================================================
+// GLOBAL IFRAME THEME CONTROL API & POSTMESSAGE LISTENER  --> READ TILL THE END
+// ============================================================================
+
+/**
+ * Global API method callable directly or via postMessage
+ * @param {string} mode - 'light', 'dark', or 'toggle'
+ */
+window.setDashboardTheme = function(mode = 'toggle') {
+    if (mode === 'light') {
+        document.body.classList.add('light-mode');
+        document.body.classList.remove('dark-mode');
+    } else if (mode === 'dark') {
+        document.body.classList.remove('light-mode');
+        document.body.classList.add('dark-mode');
+    } else {
+        const isLight = document.body.classList.toggle('light-mode');
+        document.body.classList.toggle('dark-mode', !isLight);
+    }
+};
+
+// Listen for theme commands sent from parent host window (Cross-Origin safe)
+window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+
+    if (data.action === 'TOGGLE_THEME') {
+        window.setDashboardTheme('toggle');
+    } else if (data.action === 'SET_THEME' && data.theme) {
+        window.setDashboardTheme(data.theme); // 'light' or 'dark'
+    }
+});
+
+/***    FOR PATRICE , ON HOW TO CALL EXPOSED FUNCTIONS  ***/
+
+/** 
+const iframe = document.getElementById('dashboardIframe');
+
+// Call exposed API directly
+iframe.contentWindow.setDashboardTheme('toggle'); // or 'light' / 'dark'
+
+*/
+
