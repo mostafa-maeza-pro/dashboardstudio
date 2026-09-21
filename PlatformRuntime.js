@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V1.1
+ * PlatformRuntime.js V1.11
  * Core Boilerplate and UI Chassis Engine for Calypso Dashboard Studio
  */
 
@@ -132,7 +132,7 @@ function bindChartInteractiveEvents() {
         }); 
     }); 
     
-    // Dataset vs Visual Toggle Switch Handling
+    // Dataset vs Visual Toggle Switch Handling (Global Event Delegation)
     document.querySelectorAll('.chassis-switch-btn').forEach(btn => { 
         if (btn.dataset.listenerAttached) return;
         btn.dataset.listenerAttached = 'true';
@@ -184,11 +184,9 @@ function makeModalDraggableAndResizable(modalContainer, dragHandle) {
     let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
 
     dragHandle.addEventListener('mousedown', (e) => {
-        // Do not drag if user clicks buttons or the view switch inside header
         if (e.target.closest('button') || e.target.closest('.ui-chassis-view-switch')) return;
         e.preventDefault();
 
-        // Pin current computed position before dragging starts
         const rect = modalContainer.getBoundingClientRect();
         modalContainer.style.position = 'fixed';
         modalContainer.style.margin = '0';
@@ -219,7 +217,6 @@ function makeModalDraggableAndResizable(modalContainer, dragHandle) {
         document.addEventListener('mouseup', onMouseUp);
     });
 
-    // Auto-rescale Chart.js when resizing the modal via CSS handles
     if (window.ResizeObserver) {
         const resizeObserver = new ResizeObserver(() => {
             if (activeModalChartInstance) {
@@ -238,7 +235,6 @@ function bindModalEvents(getChartInstanceFn) {
     const modalTitle = document.getElementById('ui-modal-title-text');
     const modalCloseBtn = document.getElementById('ui-modal-close-btn');
 
-    // Bind Dragging & Resizing Behavior
     if (modalContainer && modalHeader) {
         makeModalDraggableAndResizable(modalContainer, modalHeader);
     }
@@ -248,7 +244,6 @@ function bindModalEvents(getChartInstanceFn) {
         modal.classList.remove('active', 'is-active');
         document.body.classList.remove('modal-open');
         
-        // Reset positioning inline styles for next open
         if (modalContainer) {
             modalContainer.style.top = '';
             modalContainer.style.left = '';
@@ -287,8 +282,34 @@ function bindModalEvents(getChartInstanceFn) {
         if (!bodyContent) return;
         modalBody.innerHTML = bodyContent.innerHTML;
 
+        // 1. Capture the active view state ('visual' or 'dataset') from the originating card
+        const cardActiveBtn = chassis.querySelector('.ui-chassis-view-switch .chassis-switch-btn.active');
+        const activeView = cardActiveBtn ? cardActiveBtn.getAttribute('data-view') : 'visual';
+
+        // 2. Synchronize button highlight state in the modal header (#modalViewSwitch)
+        const modalHeaderSwitch = modal.querySelector('#modalViewSwitch');
+        if (modalHeaderSwitch) {
+            modalHeaderSwitch.querySelectorAll('.chassis-switch-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-view') === activeView);
+            });
+        }
+
+        // 3. Ensure modal body panels match activeView
+        const visualPanel = modalBody.querySelector('.chart-visual-panel');
+        const dataPanel = modalBody.querySelector('.chart-data-panel');
+        if (activeView === 'visual') {
+            if (visualPanel) visualPanel.classList.remove('is-hidden');
+            if (dataPanel) dataPanel.classList.add('is-hidden');
+        } else if (activeView === 'dataset') {
+            if (visualPanel) visualPanel.classList.add('is-hidden');
+            if (dataPanel) dataPanel.classList.remove('is-hidden');
+        }
+
         modal.classList.add('active', 'is-active');
         document.body.classList.add('modal-open');
+
+        // Re-attach switch event listeners for inner chassis content
+        bindChartInteractiveEvents();
 
         const modalCanvas = modalBody.querySelector('canvas');
         const origChart = getChartInstanceFn ? getChartInstanceFn(targetId) : null;
@@ -351,16 +372,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-
-
 // ============================================================================
-// GLOBAL IFRAME THEME CONTROL API & POSTMESSAGE LISTENER  --> READ TILL THE END
+// 7. GLOBAL IFRAME THEME CONTROL API
 // ============================================================================
 
-/**
- * Global API method callable directly or via postMessage
- * @param {string} mode - 'light', 'dark', or 'toggle'
- */
 window.setDashboardTheme = function(mode = 'toggle') {
     if (mode === 'light') {
         document.body.classList.add('light-mode');
@@ -374,7 +389,6 @@ window.setDashboardTheme = function(mode = 'toggle') {
     }
 };
 
-// Listen for theme commands sent from parent host window (Cross-Origin safe)
 window.addEventListener('message', (event) => {
     const data = event.data;
     if (!data || typeof data !== 'object') return;
@@ -382,17 +396,6 @@ window.addEventListener('message', (event) => {
     if (data.action === 'TOGGLE_THEME') {
         window.setDashboardTheme('toggle');
     } else if (data.action === 'SET_THEME' && data.theme) {
-        window.setDashboardTheme(data.theme); // 'light' or 'dark'
+        window.setDashboardTheme(data.theme);
     }
 });
-
-/***    FOR PATRICE , ON HOW TO CALL EXPOSED FUNCTIONS  ***/
-
-/** 
-const iframe = document.getElementById('dashboardIframe');
-
-// Call exposed API directly
-iframe.contentWindow.setDashboardTheme('toggle'); // or 'light' / 'dark'
-
-*/
-
