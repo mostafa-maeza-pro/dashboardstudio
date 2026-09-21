@@ -1084,3 +1084,39 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
     flex: 1;
     min-height: 250px;
 }
+
+
+/* Ensure modal body operates as a flex column container */
+#ui-global-enlargement-modal #ui-modal-body-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+/* Allow dataset panel to expand to full modal height */
+#ui-global-enlargement-modal .chart-data-panel {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    height: 100%;
+    min-height: 0;
+}
+
+/* Preserve hidden state when toggled off */
+#ui-global-enlargement-modal .chart-data-panel.is-hidden {
+    display: none !important;
+}
+
+/* Allow dataset table box to fill available modal space and scroll internally */
+#ui-global-enlargement-modal .chart-dataset-table-box {
+    flex: 1;
+    height: 100%;
+    max-height: 100% !important;
+    overflow: auto;
+}
+
+#ui-global-enlargement-modal .studio-data-table {
+    width: 100%;
+}
