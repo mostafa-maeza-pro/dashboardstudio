@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V1.03
+ * PlatformRuntime.js V1.1
  * Core Boilerplate and UI Chassis Engine for Calypso Dashboard Studio
  */
 
@@ -172,21 +172,92 @@ function bindChartInteractiveEvents() {
 }
 
 // ============================================================================
-// 5. MODAL ZOOM & ENLARGEMENT SYSTEM
+// 5. MODAL ZOOM, DRAG & RESIZE SYSTEM
 // ============================================================================
 
 let activeModalChartInstance = null;
 
+function makeModalDraggableAndResizable(modalContainer, dragHandle) {
+    if (!modalContainer || !dragHandle || modalContainer.dataset.draggableBound) return;
+    modalContainer.dataset.draggableBound = "true";
+
+    let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+
+    dragHandle.addEventListener('mousedown', (e) => {
+        // Do not drag if user clicks buttons or the view switch inside header
+        if (e.target.closest('button') || e.target.closest('.ui-chassis-view-switch')) return;
+        e.preventDefault();
+
+        // Pin current computed position before dragging starts
+        const rect = modalContainer.getBoundingClientRect();
+        modalContainer.style.position = 'fixed';
+        modalContainer.style.margin = '0';
+        modalContainer.style.transform = 'none';
+        modalContainer.style.top = rect.top + 'px';
+        modalContainer.style.left = rect.left + 'px';
+
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+
+        const onMouseMove = (moveEvt) => {
+            moveEvt.preventDefault();
+            pos1 = pos3 - moveEvt.clientX;
+            pos2 = pos4 - moveEvt.clientY;
+            pos3 = moveEvt.clientX;
+            pos4 = moveEvt.clientY;
+
+            modalContainer.style.top = (modalContainer.offsetTop - pos2) + "px";
+            modalContainer.style.left = (modalContainer.offsetLeft - pos1) + "px";
+        };
+
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+
+    // Auto-rescale Chart.js when resizing the modal via CSS handles
+    if (window.ResizeObserver) {
+        const resizeObserver = new ResizeObserver(() => {
+            if (activeModalChartInstance) {
+                activeModalChartInstance.resize();
+            }
+        });
+        resizeObserver.observe(modalContainer);
+    }
+}
+
 function bindModalEvents(getChartInstanceFn) {
     const modal = document.getElementById('ui-global-enlargement-modal');
+    const modalContainer = modal ? modal.querySelector('.modal-container') : null;
+    const modalHeader = modal ? modal.querySelector('.modal-header') : null;
     const modalBody = document.getElementById('ui-modal-body-content');
     const modalTitle = document.getElementById('ui-modal-title-text');
     const modalCloseBtn = document.getElementById('ui-modal-close-btn');
+
+    // Bind Dragging & Resizing Behavior
+    if (modalContainer && modalHeader) {
+        makeModalDraggableAndResizable(modalContainer, modalHeader);
+    }
 
     const closeModal = () => {
         if (!modal) return;
         modal.classList.remove('active', 'is-active');
         document.body.classList.remove('modal-open');
+        
+        // Reset positioning inline styles for next open
+        if (modalContainer) {
+            modalContainer.style.top = '';
+            modalContainer.style.left = '';
+            modalContainer.style.width = '';
+            modalContainer.style.height = '';
+            modalContainer.style.transform = '';
+            modalContainer.style.margin = '';
+        }
+
         if (activeModalChartInstance) {
             activeModalChartInstance.destroy();
             activeModalChartInstance = null;
@@ -225,7 +296,6 @@ function bindModalEvents(getChartInstanceFn) {
         if (modalCanvas && origChart) {
             modalCanvas.id = targetId + '_modal_canvas';
             try {
-                // Access raw original config rather than resolved internal proxies
                 const rawConfig = origChart.config;
                 const modalData = {
                     labels: rawConfig.data.labels ? [...rawConfig.data.labels] : [],
