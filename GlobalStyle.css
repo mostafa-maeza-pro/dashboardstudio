@@ -1,5 +1,5 @@
 /**
- * GlobalStyle.css , V1.0
+ * GlobalStyle.css , V1.1
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -1050,4 +1050,37 @@ body.dark-mode ::-webkit-scrollbar-thumb {
 }
 body.dark-mode ::-webkit-scrollbar-thumb:hover {
     background: #475569;
+}
+
+/* ==========================================================================
+		Global Modal Dragging & Resizing 
+ ============================================================================ */
+/* Resizable Container */
+#ui-global-enlargement-modal .modal-container {
+    position: fixed;
+    resize: both;
+    overflow: hidden;
+    min-width: 480px;
+    min-height: 350px;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Draggable Header Handle */
+#ui-global-enlargement-modal .modal-header {
+    cursor: move;
+    user-select: none;
+}
+
+/* Ensure body & canvas flex-grow with modal resize */
+#ui-global-enlargement-modal #ui-modal-body-content {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+#ui-global-enlargement-modal .chart-visual-panel {
+    flex: 1;
+    min-height: 250px;
 }
