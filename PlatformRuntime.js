@@ -1,9 +1,6 @@
 /**
  * PlatformRuntime.js
  * Core Boilerplate and UI Chassis Engine for Calypso Dashboard Studio
- * 
- * This file contains static UI compilation factories, date formatters, 
- * and interaction bindings to reduce LLM generation payload sizes.
  */
 
 // ============================================================================
@@ -137,7 +134,6 @@ function bindChartInteractiveEvents() {
     
     // Dataset vs Visual Toggle Switch Handling
     document.querySelectorAll('.chassis-switch-btn').forEach(btn => { 
-        // Prevent duplicate listener attachment if called multiple times
         if (btn.dataset.listenerAttached) return;
         btn.dataset.listenerAttached = 'true';
 
@@ -153,7 +149,6 @@ function bindChartInteractiveEvents() {
             } 
             btn.classList.add('active'); 
             
-            // Sync modal header switch if operating inside modal
             if (parentScope.classList.contains('modal-container')) { 
                 const modalHeaderSwitch = parentScope.querySelector('#modalViewSwitch'); 
                 if (modalHeaderSwitch) { 
@@ -174,9 +169,10 @@ function bindChartInteractiveEvents() {
             } 
         }); 
     }); 
-	
+}
+
 // ============================================================================
-// 5. MODAL ZOOM & ENLARGEMENT SYSTEM (Add to PlatformRuntime.js)
+// 5. MODAL ZOOM & ENLARGEMENT SYSTEM
 // ============================================================================
 
 let activeModalChartInstance = null;
@@ -187,7 +183,6 @@ function bindModalEvents(getChartInstanceFn) {
     const modalTitle = document.getElementById('ui-modal-title-text');
     const modalCloseBtn = document.getElementById('ui-modal-close-btn');
 
-    // Close Routine
     const closeModal = () => {
         if (!modal) return;
         modal.classList.remove('is-active');
@@ -201,7 +196,6 @@ function bindModalEvents(getChartInstanceFn) {
 
     if (modalCloseBtn) modalCloseBtn.onclick = closeModal;
 
-    // Zoom Button Delegation
     document.addEventListener('click', (e) => {
         const zoomBtn = e.target.closest('.ui-chassis-zoom-trigger');
         if (!zoomBtn || !modal || !modalBody) return;
@@ -213,13 +207,11 @@ function bindModalEvents(getChartInstanceFn) {
         const titleText = chassis.querySelector('.ui-chassis-title')?.textContent || 'Chart View';
         if (modalTitle) modalTitle.textContent = titleText;
 
-        // Clean existing modal chart
         if (activeModalChartInstance) {
             activeModalChartInstance.destroy();
             activeModalChartInstance = null;
         }
 
-        // Clone chassis body content
         const bodyContent = chassis.querySelector('.ui-chassis-body');
         if (!bodyContent) return;
         modalBody.innerHTML = bodyContent.innerHTML;
@@ -227,7 +219,6 @@ function bindModalEvents(getChartInstanceFn) {
         modal.classList.add('is-active');
         document.body.classList.add('modal-open');
 
-        // Re-instantiate Chart.js canvas in Modal
         const modalCanvas = modalBody.querySelector('canvas');
         const origChart = getChartInstanceFn ? getChartInstanceFn(targetId) : null;
 
@@ -244,13 +235,13 @@ function bindModalEvents(getChartInstanceFn) {
             });
         }
     });
+}
 
-	// ============================================================================
+// ============================================================================
 // 6. GLOBAL HEADER & THEME INTERACTION ENGINE
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. User Menu Dropdown Toggle
     const userMenuTrigger = document.getElementById('userMenuTrigger');
     const userMenuDropdown = document.getElementById('userMenuDropdown');
 
@@ -265,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 2. Theme Toggle Listener (Delegated)
+    // Theme Toggle Listener
     document.addEventListener('click', (e) => {
         const themeBtn = e.target.closest('#themeToggleBtn');
         if (themeBtn) {
@@ -274,5 +265,3 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
-}
-}
