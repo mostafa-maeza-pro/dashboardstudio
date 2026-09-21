@@ -238,7 +238,7 @@ function bindModalEvents(getChartInstanceFn) {
 }
 
 // ============================================================================
-// 6. GLOBAL HEADER & THEME INTERACTION ENGINE
+// 6. GLOBAL HEADER & THEME INTERACTION ENGINE (in PlatformRuntime.js)
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -257,12 +257,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 2. Theme Toggle Listener (Delegated)
+    // 2. Theme Toggle Listener (Swaps dark-mode and light-mode cleanly)
     document.addEventListener('click', (e) => {
         const themeBtn = e.target.closest('#themeToggleBtn');
         if (themeBtn) {
             e.stopPropagation();
-            document.body.classList.toggle('light-mode');
+            const isLight = document.body.classList.toggle('light-mode');
+            document.body.classList.toggle('dark-mode', !isLight);
         }
     });
 });
