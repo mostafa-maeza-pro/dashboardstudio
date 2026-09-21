@@ -242,6 +242,7 @@ function bindModalEvents(getChartInstanceFn) {
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 1. User Menu Dropdown Toggle
     const userMenuTrigger = document.getElementById('userMenuTrigger');
     const userMenuDropdown = document.getElementById('userMenuDropdown');
 
@@ -256,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Theme Toggle Listener
+    // 2. Theme Toggle Listener (Delegated)
     document.addEventListener('click', (e) => {
         const themeBtn = e.target.closest('#themeToggleBtn');
         if (themeBtn) {
