@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js , V1.01
+ * PlatformRuntime.js V1.02
  * Core Boilerplate and UI Chassis Engine for Calypso Dashboard Studio
  */
 
@@ -185,7 +185,7 @@ function bindModalEvents(getChartInstanceFn) {
 
     const closeModal = () => {
         if (!modal) return;
-        modal.classList.remove('is-active');
+        modal.classList.remove('active', 'is-active');
         document.body.classList.remove('modal-open');
         if (activeModalChartInstance) {
             activeModalChartInstance.destroy();
@@ -216,7 +216,7 @@ function bindModalEvents(getChartInstanceFn) {
         if (!bodyContent) return;
         modalBody.innerHTML = bodyContent.innerHTML;
 
-        modal.classList.add('is-active');
+        modal.classList.add('active', 'is-active');
         document.body.classList.add('modal-open');
 
         const modalCanvas = modalBody.querySelector('canvas');
@@ -224,25 +224,33 @@ function bindModalEvents(getChartInstanceFn) {
 
         if (modalCanvas && origChart) {
             modalCanvas.id = targetId + '_modal_canvas';
-            activeModalChartInstance = new Chart(modalCanvas.getContext('2d'), {
-                type: origChart.config.type,
-                data: JSON.parse(JSON.stringify(origChart.config.data)),
-                options: {
-                    ...origChart.config.options,
-                    responsive: true,
-                    maintainAspectRatio: false
-                }
-            });
+            try {
+                // Safe shallow clone of datasets to prevent JSON circular reference errors
+                const modalData = {
+                    labels: origChart.data.labels ? [...origChart.data.labels] : [],
+                    datasets: origChart.data.datasets.map(ds => ({ ...ds }))
+                };
+                activeModalChartInstance = new Chart(modalCanvas.getContext('2d'), {
+                    type: origChart.config.type,
+                    data: modalData,
+                    options: {
+                        ...origChart.options,
+                        responsive: true,
+                        maintainAspectRatio: false
+                    }
+                });
+            } catch (err) {
+                console.error("Modal chart creation error:", err);
+            }
         }
     });
 }
 
 // ============================================================================
-// 6. GLOBAL HEADER & THEME INTERACTION ENGINE (in PlatformRuntime.js)
+// 6. GLOBAL HEADER & THEME INTERACTION ENGINE
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. User Menu Dropdown Toggle
     const userMenuTrigger = document.getElementById('userMenuTrigger');
     const userMenuDropdown = document.getElementById('userMenuDropdown');
 
@@ -257,7 +265,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 2. Theme Toggle Listener (Swaps dark-mode and light-mode cleanly)
     document.addEventListener('click', (e) => {
         const themeBtn = e.target.closest('#themeToggleBtn');
         if (themeBtn) {
