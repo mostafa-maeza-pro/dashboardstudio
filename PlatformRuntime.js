@@ -175,8 +175,8 @@ function bindChartInteractiveEvents() {
         }); 
     }); 
 	
-	// ============================================================================
-// MODAL ZOOM & ENLARGEMENT SYSTEM (Add to PlatformRuntime.js)
+// ============================================================================
+// 5. MODAL ZOOM & ENLARGEMENT SYSTEM (Add to PlatformRuntime.js)
 // ============================================================================
 
 let activeModalChartInstance = null;
@@ -244,5 +244,35 @@ function bindModalEvents(getChartInstanceFn) {
             });
         }
     });
+
+	// ============================================================================
+// 6. GLOBAL HEADER & THEME INTERACTION ENGINE
+// ============================================================================
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. User Menu Dropdown Toggle
+    const userMenuTrigger = document.getElementById('userMenuTrigger');
+    const userMenuDropdown = document.getElementById('userMenuDropdown');
+
+    if (userMenuTrigger && userMenuDropdown) {
+        userMenuTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            userMenuDropdown.classList.toggle('active');
+        });
+
+        document.addEventListener('click', () => {
+            userMenuDropdown.classList.remove('active');
+        });
+    }
+
+    // 2. Theme Toggle Listener (Delegated)
+    document.addEventListener('click', (e) => {
+        const themeBtn = e.target.closest('#themeToggleBtn');
+        if (themeBtn) {
+            e.stopPropagation();
+            document.body.classList.toggle('light-mode');
+        }
+    });
+});
 }
 }
