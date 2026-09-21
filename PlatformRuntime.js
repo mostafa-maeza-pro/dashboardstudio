@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V1.02
+ * PlatformRuntime.js V1.03
  * Core Boilerplate and UI Chassis Engine for Calypso Dashboard Studio
  */
 
@@ -225,19 +225,25 @@ function bindModalEvents(getChartInstanceFn) {
         if (modalCanvas && origChart) {
             modalCanvas.id = targetId + '_modal_canvas';
             try {
-                // Safe shallow clone of datasets to prevent JSON circular reference errors
+                // Access raw original config rather than resolved internal proxies
+                const rawConfig = origChart.config;
                 const modalData = {
-                    labels: origChart.data.labels ? [...origChart.data.labels] : [],
-                    datasets: origChart.data.datasets.map(ds => ({ ...ds }))
+                    labels: rawConfig.data.labels ? [...rawConfig.data.labels] : [],
+                    datasets: rawConfig.data.datasets.map(ds => ({
+                        ...ds,
+                        data: ds.data ? [...ds.data] : []
+                    }))
                 };
+                const modalOptions = {
+                    ...(rawConfig.options || {}),
+                    responsive: true,
+                    maintainAspectRatio: false
+                };
+
                 activeModalChartInstance = new Chart(modalCanvas.getContext('2d'), {
-                    type: origChart.config.type,
+                    type: rawConfig.type,
                     data: modalData,
-                    options: {
-                        ...origChart.options,
-                        responsive: true,
-                        maintainAspectRatio: false
-                    }
+                    options: modalOptions
                 });
             } catch (err) {
                 console.error("Modal chart creation error:", err);
