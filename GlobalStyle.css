@@ -1,5 +1,5 @@
 /**
- * GlobalStyle.css , V1.1
+ * GlobalStyle.css , V1.11
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -751,7 +751,18 @@ body.dark-mode .collar-meta-val { color: #38bdf8; }
    ========================================================================== */
 #ui-global-enlargement-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); display: none; justify-content: center; align-items: center; z-index: 3000; padding: 40px; }
 #ui-global-enlargement-modal.active { display: flex; }
-.modal-container { background-color: #ffffff; border-radius: 12px; width: 100%; max-width: 960px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); overflow: hidden; }
+.modal-container { 
+    background-color: #ffffff; 
+    border-radius: 12px; 
+    width: min(980px, 95vw); 
+    height: min(490px, 90vh); 
+    max-width: 95vw; 
+    max-height: 90vh; 
+    display: flex; 
+    flex-direction: column; 
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); 
+    overflow: hidden; 
+}
 .modal-header { padding: 14px 24px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
 #ui-modal-title-text { font-size: 16px; font-weight: 600; color: #0f172a; margin: 0; }
 #ui-modal-close-btn { background: none; border: none; font-size: 24px; color: #94a3b8; cursor: pointer; line-height: 1; }
@@ -1060,8 +1071,8 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
     position: fixed;
     resize: both;
     overflow: hidden;
-    min-width: 880px;
-    min-height: 350px;
+    min-width: 360px;
+    min-height: 280px;
     display: flex;
     flex-direction: column;
 }
