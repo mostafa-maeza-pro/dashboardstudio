@@ -1060,7 +1060,7 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
     position: fixed;
     resize: both;
     overflow: hidden;
-    min-width: 480px;
+    min-width: 880px;
     min-height: 350px;
     display: flex;
     flex-direction: column;
