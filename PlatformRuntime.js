@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V1.11
+ * PlatformRuntime.js V1.12
  * Core Boilerplate and UI Chassis Engine for Calypso Dashboard Studio
  */
 
@@ -251,6 +251,7 @@ function bindModalEvents(getChartInstanceFn) {
             modalContainer.style.height = '';
             modalContainer.style.transform = '';
             modalContainer.style.margin = '';
+            modalContainer.style.aspectRatio = '';
         }
 
         if (activeModalChartInstance) {
@@ -270,7 +271,7 @@ function bindModalEvents(getChartInstanceFn) {
         const chassis = zoomBtn.closest('.ui-proposal-chassis');
         if (!chassis) return;
 
-        const titleText = chassis.querySelector('.ui-chassis-title')?.textContent || 'Chart View';
+        const titleText = chassis.querySelector('.ui-chassis-title')?.textContent || 'Enlarged View';
         if (modalTitle) modalTitle.textContent = titleText;
 
         if (activeModalChartInstance) {
@@ -282,11 +283,35 @@ function bindModalEvents(getChartInstanceFn) {
         if (!bodyContent) return;
         modalBody.innerHTML = bodyContent.innerHTML;
 
-        // 1. Capture the active view state ('visual' or 'dataset') from the originating card
+        // --- GEM-LEVEL DATAGRID & CHART ENLARGEMENT SCALING (1.2x Multiplier) ---
+        if (modalContainer) {
+            const rect = chassis.getBoundingClientRect();
+            const originWidth = rect.width || 600;
+            const originHeight = rect.height || 350;
+
+            const scaleMultiplier = 1.2;
+            let targetWidthPx = originWidth * scaleMultiplier;
+            let targetHeightPx = originHeight * scaleMultiplier;
+
+            const maxVwPx = window.innerWidth * 0.95;
+            const maxVhPx = window.innerHeight * 0.92;
+            const minWidthPx = 400;
+            const minHeightPx = 300;
+
+            targetWidthPx = Math.min(Math.max(targetWidthPx, minWidthPx), maxVwPx);
+            targetHeightPx = Math.min(Math.max(targetHeightPx, minHeightPx), maxVhPx);
+
+            modalContainer.style.width = `${targetWidthPx}px`;
+            modalContainer.style.height = `${targetHeightPx}px`;
+            modalContainer.style.maxWidth = '95vw';
+            modalContainer.style.maxHeight = '92vh';
+            modalContainer.style.aspectRatio = 'unset';
+        }
+
+        // Synchronize view state button highlight
         const cardActiveBtn = chassis.querySelector('.ui-chassis-view-switch .chassis-switch-btn.active');
         const activeView = cardActiveBtn ? cardActiveBtn.getAttribute('data-view') : 'visual';
 
-        // 2. Synchronize button highlight state in the modal header (#modalViewSwitch)
         const modalHeaderSwitch = modal.querySelector('#modalViewSwitch');
         if (modalHeaderSwitch) {
             modalHeaderSwitch.querySelectorAll('.chassis-switch-btn').forEach(btn => {
@@ -294,7 +319,6 @@ function bindModalEvents(getChartInstanceFn) {
             });
         }
 
-        // 3. Ensure modal body panels match activeView
         const visualPanel = modalBody.querySelector('.chart-visual-panel');
         const dataPanel = modalBody.querySelector('.chart-data-panel');
         if (activeView === 'visual') {
@@ -308,7 +332,6 @@ function bindModalEvents(getChartInstanceFn) {
         modal.classList.add('active', 'is-active');
         document.body.classList.add('modal-open');
 
-        // Re-attach switch event listeners for inner chassis content
         bindChartInteractiveEvents();
 
         const modalCanvas = modalBody.querySelector('canvas');
@@ -342,7 +365,6 @@ function bindModalEvents(getChartInstanceFn) {
         }
     });
 }
-
 // ============================================================================
 // 6. GLOBAL HEADER & THEME INTERACTION ENGINE
 // ============================================================================
