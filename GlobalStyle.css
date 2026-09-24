@@ -1,5 +1,5 @@
 /**
- * GlobalStyle.css , V1.11
+ * GlobalStyle.css , V1.12
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -1130,4 +1130,110 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
 
 #ui-global-enlargement-modal .studio-data-table {
     width: 100%;
+}
+
+/* ==========================================================================
+   Multi-Source Popover Card Slider Deck (Native CSS Class Rules)
+   ========================================================================== */
+.contract-cards-viewport {
+    overflow: hidden;
+    width: 100%;
+}
+
+.contract-cards-track {
+    display: flex;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    width: 100%;
+}
+
+.contract-card-slide {
+    min-width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    flex-shrink: 0;
+}
+
+body.dark-mode .contract-card-slide {
+    border-color: rgba(255, 255, 255, 0.08);
+}
+
+.contract-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+}
+
+body.dark-mode .contract-card-header {
+    border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.contract-card-title {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #2563eb;
+}
+
+body.dark-mode .contract-card-title {
+    color: #38bdf8;
+}
+
+.contract-slider-controls {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+}
+
+.contract-slider-arrow {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    border-radius: 4px;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.75rem;
+    line-height: 1;
+    transition: all 0.15s ease;
+}
+
+.contract-slider-arrow:hover:not([disabled]) {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.contract-slider-arrow[disabled] {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+body.dark-mode .contract-slider-arrow {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #cbd5e1;
+}
+
+body.dark-mode .contract-slider-arrow:hover:not([disabled]) {
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+}
+
+.slide-ratio-counter {
+    font-size: 0.7rem;
+    opacity: 0.6;
+    padding: 0 4px;
+}
+
+.contract-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
