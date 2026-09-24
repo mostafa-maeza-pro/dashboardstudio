@@ -1,5 +1,5 @@
 /**
- * GlobalStyle.css , V1.12
+ * GlobalStyle.css , V1.13
  */
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -1133,107 +1133,188 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
 }
 
 /* ==========================================================================
-   Multi-Source Popover Card Slider Deck (Native CSS Class Rules)
+   Pre-Defined Criteria Popover & Multi-Source Sliding Deck
    ========================================================================== */
-.contract-cards-viewport {
+
+/* Section 2 Container & Fold Control */
+.popover-audit-context {
+    margin-top: 14px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.popover-section-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #94a3b8;
+    margin-bottom: 8px;
+}
+
+.popover-section-title-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.popover-fold-btn {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 2px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.popover-fold-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f8fafc;
+}
+
+.popover-fold-btn svg {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.popover-fold-btn.is-collapsed svg {
+    transform: rotate(-90deg);
+}
+
+.popover-audit-scrollbox {
+    transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease, margin 0.25s ease;
+    max-height: 260px;
+    opacity: 1;
     overflow: hidden;
+}
+
+.popover-audit-scrollbox.is-collapsed {
+    max-height: 0;
+    opacity: 0;
+    margin: 0;
+    padding: 0;
+    pointer-events: none;
+}
+
+/* Sliding Deck Viewport & Track */
+.contract-cards-viewport {
     width: 100%;
+    overflow: hidden;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .contract-cards-track {
     display: flex;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     width: 100%;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Individual Card Slide */
 .contract-card-slide {
     min-width: 100%;
     box-sizing: border-box;
-    padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    flex-shrink: 0;
-}
-
-body.dark-mode .contract-card-slide {
-    border-color: rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
 }
 
 .contract-card-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid #e2e8f0;
-    padding-bottom: 6px;
-    margin-bottom: 8px;
-}
-
-body.dark-mode .contract-card-header {
-    border-bottom-color: rgba(255, 255, 255, 0.06);
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .contract-card-title {
+    font-size: 0.8rem;
     font-weight: 600;
-    font-size: 0.85rem;
-    color: #2563eb;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-body.dark-mode .contract-card-title {
-    color: #38bdf8;
-}
-
-.contract-slider-controls {
+.card-slider-actions {
     display: flex;
-    gap: 4px;
     align-items: center;
+    gap: 6px;
 }
 
-.contract-slider-arrow {
-    background: #f1f5f9;
-    border: 1px solid #cbd5e1;
-    color: #475569;
+.slider-prev-action,
+.slider-next-action {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #94a3b8;
     border-radius: 4px;
-    width: 22px;
-    height: 22px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
+    width: 20px;
+    height: 20px;
     font-size: 0.75rem;
     line-height: 1;
-    transition: all 0.15s ease;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
 }
 
-.contract-slider-arrow:hover:not([disabled]) {
-    background: #e2e8f0;
-    color: #0f172a;
+.slider-prev-action:hover,
+.slider-next-action:hover {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.3);
 }
 
-.contract-slider-arrow[disabled] {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-body.dark-mode .contract-slider-arrow {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.12);
-    color: #cbd5e1;
-}
-
-body.dark-mode .contract-slider-arrow:hover:not([disabled]) {
-    background: rgba(255, 255, 255, 0.16);
-    color: #ffffff;
-}
-
-.slide-ratio-counter {
+.slider-counter {
     font-size: 0.7rem;
-    opacity: 0.6;
-    padding: 0 4px;
+    color: #64748b;
+    font-weight: 500;
+    min-width: 24px;
+    text-align: center;
 }
 
+/* Audit Key-Value Rows */
 .contract-card-body {
+    padding: 8px 12px;
     display: flex;
     flex-direction: column;
     gap: 6px;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.criteria-audit-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    padding: 3px 0;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.04);
+}
+
+.criteria-audit-row:last-child {
+    border-bottom: none;
+}
+
+.audit-key {
+    color: #94a3b8;
+    font-weight: 500;
+}
+
+.audit-val {
+    color: #38bdf8;
+    font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: rgba(56, 189, 248, 0.08);
+    padding: 2px 6px;
+    border-radius: 4px;
 }
