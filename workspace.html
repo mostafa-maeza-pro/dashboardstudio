@@ -5,19 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calypso Dashboard Studio - Workspace</title>
 
-    <!-- Global Presentation & Platform Styles[cite: 2] -->
+    <!-- Global Presentation & Platform Styles -->
     <link rel="stylesheet" href="https://mostafa-maeza-pro.github.io/dashboardstudio/GlobalStyle.css">
 
-    <!-- External Charting Engine & Compression Utilities[cite: 2] -->
+    <!-- External Charting Engine & Compression Utilities -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
-    <!-- Native Host Runtime Mechanics[cite: 4] -->
+    <!-- Native Host Runtime Mechanics -->
     <script src="https://mostafa-maeza-pro.github.io/dashboardstudio/PlatformRuntime.js"></script>
 </head>
 <body>
 
-    <!-- ZONE 1: System Admin Control Bar[cite: 3] -->
+    <!-- ZONE 1: System Admin Control Bar -->
     <header class="admin-system-header" id="platformAdminBar">
         <div class="header-left-section">
             <div class="header-title-block">
@@ -30,7 +30,7 @@
             <div class="upload-zone" style="display: flex; align-items: center; gap: 8px;">
                 <label for="devFileInput" class="custom-file-upload">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"></path>
                     </svg>
                     Upload File(s)
                 </label>
@@ -65,7 +65,7 @@
         </div>
     </header>
 
-    <!-- Backdrop & Global Enlargement Modal[cite: 2] -->
+    <!-- Backdrop & Global Enlargement Modal -->
     <div id="studioPopoverBackdrop" class="studio-popover-backdrop"></div>
 
     <div id="ui-global-enlargement-modal">
@@ -88,7 +88,7 @@
         </div>
     </div>
 
-    <!-- ZONE 2: Global Canvas Shell[cite: 2, 3] -->
+    <!-- ZONE 2: Global Canvas Shell -->
     <main id="globalCanvasShell" class="ui-global-canvas">
         <div id="ui-section-title-anchor">
             <div class="header-title-meta-group">
@@ -126,16 +126,24 @@
         </section>
     </main>
 
-    <!-- GENERIC RUNTIME ENGINE (ZERO HARDCODED DOMAINS)[cite: 3, 4] -->
+    <!-- GENERIC RUNTIME ENGINE -->
     <script>
     const IS_PRODUCTION_MODE = false;
 
-    // Blank State: Dynamically populated from URL spec or user uploads[cite: 3]
     let CONTRACT_REGISTRY = {};
     let ACTIVE_PACKAGE_DATA = {};
     let currentDomain = "default";
     let runtimeParser = null;
     let CURRENT_SPEC = null;
+
+    // Financial string to clean float parser
+    function cleanNumber(val) {
+        if (typeof val === 'number') return val;
+        if (val === null || val === undefined) return 0;
+        const cleanStr = String(val).replace(/,/g, '').trim();
+        const num = parseFloat(cleanStr);
+        return isNaN(num) ? 0 : num;
+    }
 
     class DashboardRuntimeParser {
         constructor(options = {}) {
@@ -192,9 +200,10 @@
                 let valDate = "Live Active";
                 const sampleRows = this.activeData[this.currentDomain] || [];
                 if (sampleRows.length > 0) {
-                    // Detect date column or ValuationDate field
                     const dateCol = Object.keys(sampleRows[0]).find(k => /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(k) || k.toLowerCase().includes('date'));
-                    if (dateCol) valDate = sampleRows[0][dateCol];
+                    if (dateCol) {
+                        valDate = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(dateCol) ? dateCol : sampleRows[0][dateCol];
+                    }
                 }
 
                 subtitleElem.textContent = "⚡ " + uploadTime + " | Valuation Date: " + valDate;
@@ -349,6 +358,14 @@
         _hydrateCharts() {
             const outlet = document.getElementById('ui-charts-container-outlet');
             if (!outlet) return;
+
+            // Destroy previous chart instances before DOM refresh
+            Object.values(this.chartInstances).forEach(chart => {
+                if (chart && typeof chart.destroy === 'function') {
+                    chart.destroy();
+                }
+            });
+            this.chartInstances = {};
             outlet.innerHTML = '';
 
             (this.spec.charts || []).forEach(chartSpec => {
@@ -382,10 +399,6 @@
 
                 const canvas = document.getElementById(chartId);
                 if (canvas) {
-                    if (this.chartInstances[chartId]) {
-                        this.chartInstances[chartId].destroy();
-                    }
-
                     const ctx = canvas.getContext('2d');
                     this.chartInstances[chartId] = new Chart(ctx, {
                         type: chartSpec.type || 'bar',
@@ -405,7 +418,7 @@
                 const labels = dateHeaders.length > 0 ? dateHeaders : Object.keys(rows[0]).slice(-4);
                 const datasets = (chartSpec.series || [{ label: 'Valuation Flow', color: '#38bdf8' }]).map(seriesCfg => {
                     const dataPoints = labels.map(dateKey => {
-                        return rows.reduce((acc, r) => acc + (parseFloat(r[dateKey]) || 0), 0);
+                        return rows.reduce((acc, r) => acc + cleanNumber(r[dateKey]), 0);
                     });
 
                     return {
@@ -437,10 +450,10 @@
 
             rows.forEach(r => {
                 const key = r[groupField] || "Other";
-                groups[key] = (groups[key] || 0) + (parseFloat(r[metricField]) || 0);
+                groups[key] = (groups[key] || 0) + cleanNumber(r[metricField]);
             });
 
-            let sortedKeys = Object.keys(groups).sort((a, b) => groups[b] - groups[a]);
+            let sortedKeys = Object.keys(groups).sort((a, b) => Math.abs(groups[b]) - Math.abs(groups[a]));
             if (chartSpec.dimensions?.topN && sortedKeys.length > chartSpec.dimensions.topN) {
                 const topKeys = sortedKeys.slice(0, chartSpec.dimensions.topN);
                 if (chartSpec.dimensions.otherBucket) {
@@ -540,24 +553,29 @@
             const activeDom = this.currentDomain;
             const domState = this._getDomainState(activeDom);
             
-            // Dynamic column generator from actual data keys[cite: 3]
             const domainSchema = gridConfig.domains?.[activeDom] 
                 || (CONTRACT_REGISTRY[activeDom] ? {
-                    columns: CONTRACT_REGISTRY[activeDom].columns.map(c => ({
-                        key: c.name,
-                        label: c.name.replace(/_/g, ' '),
-                        sortable: true,
-                        format: typeof (this.activeData[activeDom]?.[0]?.[c.name]) === 'number' ? 'currency' : undefined,
-                        footerAgg: typeof (this.activeData[activeDom]?.[0]?.[c.name]) === 'number' ? 'SUM' : 'OFF'
-                    }))
+                    columns: CONTRACT_REGISTRY[activeDom].columns.map(c => {
+                        const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(c.name) || /balance|amount|notional|npv|mtm|value/i.test(c.name);
+                        return {
+                            key: c.name,
+                            label: c.name.replace(/_/g, ' '),
+                            sortable: true,
+                            format: isDateOrAmt ? 'currency' : undefined,
+                            footerAgg: isDateOrAmt ? 'SUM' : (c.name.toLowerCase().includes('client') || c.name.toLowerCase().includes('id') ? 'COUNT' : 'OFF')
+                        };
+                    })
                 } : {
-                    columns: Object.keys(this.activeData[activeDom]?.[0] || {}).map(k => ({
-                        key: k,
-                        label: k.replace(/_/g, ' '),
-                        sortable: true,
-                        format: typeof (this.activeData[activeDom]?.[0]?.[k]) === 'number' ? 'currency' : undefined,
-                        footerAgg: typeof (this.activeData[activeDom]?.[0]?.[k]) === 'number' ? 'SUM' : 'OFF'
-                    }))
+                    columns: Object.keys(this.activeData[activeDom]?.[0] || {}).map(k => {
+                        const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(k) || /balance|amount|notional|npv|mtm|value/i.test(k);
+                        return {
+                            key: k,
+                            label: k.replace(/_/g, ' '),
+                            sortable: true,
+                            format: isDateOrAmt ? 'currency' : undefined,
+                            footerAgg: isDateOrAmt ? 'SUM' : (k.toLowerCase().includes('client') || k.toLowerCase().includes('id') ? 'COUNT' : 'OFF')
+                        };
+                    })
                 });
 
             let tabsHtml = '';
@@ -577,9 +595,9 @@
                 const k = domState.sortKey;
                 const dir = domState.sortDir;
                 rows.sort((a, b) => {
-                    const valA = a[k], valB = b[k];
-                    if (typeof valA === 'number' && typeof valB === 'number') return (valA - valB) * dir;
-                    return String(valA ?? '').localeCompare(String(valB ?? '')) * dir;
+                    const valA = cleanNumber(a[k]), valB = cleanNumber(b[k]);
+                    if (valA !== 0 || valB !== 0) return (valA - valB) * dir;
+                    return String(a[k] ?? '').localeCompare(String(b[k] ?? '')) * dir;
                 });
             }
 
@@ -606,7 +624,7 @@
             const tbodyHtml = '<tbody>' +
                 rows.map(r => '<tr>' +
                     cols.map(c => '<td style="padding: 5px 10px; font-size: 11px; border-bottom: 1px solid rgba(125,125,125,0.08);">' +
-                        (c.format ? this._formatValue(r[c.key], { style: c.format }) : (r[c.key] ?? '')) +
+                        (c.format ? this._formatValue(cleanNumber(r[c.key]), { style: c.format }) : (r[c.key] ?? '')) +
                     '</td>').join('') +
                 '</tr>').join('') +
             '</tbody>';
@@ -650,7 +668,7 @@
             if (func === 'OFF') return '-';
             if (func === 'COUNT') return rows.length;
 
-            const numbers = rows.map(r => parseFloat(r[colKey])).filter(v => !isNaN(v));
+            const numbers = rows.map(r => cleanNumber(r[colKey])).filter(v => !isNaN(v));
             if (numbers.length === 0) return '-';
 
             const sum = numbers.reduce((a, b) => a + b, 0);
@@ -775,17 +793,18 @@
 
         _computeAggregation(rows, field, op, weightField = null) {
             if (!rows || rows.length === 0) return 0;
-            if (op === 'count') return rows.length;
+            const lowerOp = (op || '').toLowerCase();
+            if (lowerOp === 'count') return rows.length;
 
-            const vals = rows.map(r => parseFloat(r[field])).filter(v => !isNaN(v));
+            const vals = rows.map(r => cleanNumber(r[field])).filter(v => !isNaN(v));
             if (vals.length === 0) return 0;
 
-            if (op === 'sum') return vals.reduce((a, b) => a + b, 0);
-            if (op === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
-            if (op === 'weightedAvg' && weightField) {
+            if (lowerOp === 'sum') return vals.reduce((a, b) => a + b, 0);
+            if (lowerOp === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+            if (lowerOp === 'weightedavg' && weightField) {
                 let totalWeight = 0, sumProd = 0;
                 rows.forEach(r => {
-                    const v = parseFloat(r[field]), w = parseFloat(r[weightField]);
+                    const v = cleanNumber(r[field]), w = cleanNumber(r[weightField]);
                     if (!isNaN(v) && !isNaN(w)) {
                         sumProd += v * w;
                         totalWeight += w;
@@ -798,7 +817,7 @@
 
         _formatValue(val, formatCfg = {}) {
             if (val === null || val === undefined || isNaN(val)) return '-';
-            const num = parseFloat(val);
+            const num = cleanNumber(val);
 
             if (formatCfg.style === 'currency') {
                 return new Intl.NumberFormat('en-US', {
@@ -830,16 +849,13 @@
 
     window.DashboardRuntimeParser = DashboardRuntimeParser;
 
-    // Normalizes both micro-ASTs and full dashboard-spec.json objects[cite: 3]
     function normalizeSpec(raw) {
         const domainName = raw.d || raw.metadata?.activeDomain || "default";
 
-        // 1. Ingest embedded sample records directly into ACTIVE_PACKAGE_DATA[cite: 3]
         if (raw.s && Array.isArray(raw.s) && raw.s.length > 0) {
             ACTIVE_PACKAGE_DATA[domainName] = raw.s;
         }
 
-        // 2. Dynamically extract schema columns from the sample row keys if absent[cite: 3]
         if (!CONTRACT_REGISTRY[domainName] && ACTIVE_PACKAGE_DATA[domainName]?.[0]) {
             CONTRACT_REGISTRY[domainName] = {
                 columns: Object.keys(ACTIVE_PACKAGE_DATA[domainName][0]).map(col => ({ name: col })),
@@ -899,7 +915,9 @@
         }
 
         CURRENT_SPEC = normalizeSpec(specObject);
-        runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+        if (runtimeParser) {
+            runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+        }
     }
 
     function processIncomingPayloadGeneric(parsed, filename = "") {
@@ -915,13 +933,26 @@
         const cleanName = filename.replace(/\.(data|json|contract)$/i, '').trim();
         const domain = parsed.metadata?.domain 
             || parsed.metadata?.templateId 
-            || (cleanName && cleanName !== "data" ? cleanName : currentDomain);
+            || (cleanName && cleanName !== "data" && cleanName !== "" ? cleanName : currentDomain);
 
         // 3. Contract Schema
         if (parsed.columns || parsed.exposedCriteria) {
             CONTRACT_REGISTRY[domain] = parsed;
             if (parsed.sampleData) {
                 ACTIVE_PACKAGE_DATA[domain] = parsed.sampleData;
+            }
+            currentDomain = domain;
+            if (CURRENT_SPEC && CURRENT_SPEC.metadata) {
+                CURRENT_SPEC.metadata.activeDomain = domain;
+            } else {
+                CURRENT_SPEC = normalizeSpec({
+                    d: domain,
+                    t: domain + " Dashboard",
+                    s: ACTIVE_PACKAGE_DATA[domain] || []
+                });
+            }
+            if (runtimeParser) {
+                runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
             }
             return true;
         }
@@ -931,6 +962,18 @@
         if (rows.length > 0) {
             ACTIVE_PACKAGE_DATA[domain] = rows;
             currentDomain = domain;
+            if (CURRENT_SPEC && CURRENT_SPEC.metadata) {
+                CURRENT_SPEC.metadata.activeDomain = domain;
+            } else {
+                CURRENT_SPEC = normalizeSpec({
+                    d: domain,
+                    t: domain + " Dashboard",
+                    s: rows
+                });
+            }
+            if (runtimeParser) {
+                runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+            }
             return true;
         }
 
@@ -954,10 +997,7 @@
             }
         }
 
-        if (!rawPayload) {
-            // Standby state: wait for link, paste, or file drop[cite: 3]
-            return;
-        }
+        if (!rawPayload) return;
 
         try {
             let jsonString = null;
@@ -1004,7 +1044,7 @@
         runtimeParser = new DashboardRuntimeParser({ isProductionMode: IS_PRODUCTION_MODE });
         loadSpecFromUrl();
 
-        // 1. File Upload Facility
+        // 1. File Upload Facility with automatic input clearing
         const fileInput = document.getElementById('devFileInput');
         if (fileInput) {
             fileInput.addEventListener('change', (e) => {
@@ -1021,6 +1061,8 @@
                     };
                     reader.readAsText(file);
                 });
+                // Reset value so re-uploading the same file triggers change
+                e.target.value = '';
             });
         }
 
