@@ -983,3 +983,69 @@
 
             if (!jsonString) {
                 try {
+                    JSON.parse(cleanPayload);
+                    jsonString = cleanPayload;
+                } catch (e) {
+                    jsonString = null;
+                }
+            }
+
+            if (jsonString) {
+                const parsed = JSON.parse(jsonString);
+                applyCompleteSpec(parsed);
+            }
+        } catch (err) {
+            console.error("Failed to load specification from URL:", err);
+        }
+    }
+
+    // Platform Bootstrap Lifecycle
+    window.addEventListener('DOMContentLoaded', () => {
+        runtimeParser = new DashboardRuntimeParser({ isProductionMode: IS_PRODUCTION_MODE });
+        loadSpecFromUrl();
+
+        // 1. File Upload Facility
+        const fileInput = document.getElementById('devFileInput');
+        if (fileInput) {
+            fileInput.addEventListener('change', (e) => {
+                const files = Array.from(e.target.files);
+                files.forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => {
+                        try {
+                            const parsed = JSON.parse(evt.target.result);
+                            processIncomingPayloadGeneric(parsed, file.name);
+                        } catch (err) {
+                            console.error("Payload read error:", err);
+                        }
+                    };
+                    reader.readAsText(file);
+                });
+            });
+        }
+
+        // 2. Paste AI Spec Facility
+        const pasteBtn = document.getElementById('pasteSpecBtn');
+        if (pasteBtn) {
+            pasteBtn.addEventListener('click', async () => {
+                try {
+                    const clipboardText = await navigator.clipboard.readText();
+                    const parsed = JSON.parse(clipboardText);
+                    applyCompleteSpec(parsed);
+                } catch (err) {
+                    const manualText = prompt("Paste your dashboard-spec.json specification here:");
+                    if (manualText) {
+                        try {
+                            const parsed = JSON.parse(manualText);
+                            applyCompleteSpec(parsed);
+                        } catch (e) {
+                            alert("Invalid JSON format. Please ensure valid dashboard-spec.json structure.");
+                        }
+                    }
+                }
+            });
+        }
+    });
+    </script>
+</body>
+</html>
