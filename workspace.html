@@ -123,37 +123,59 @@
     let CURRENT_SPEC = null;
 
     function loadFromHash() {
-        const hash = window.location.hash;
-        if (!hash || !hash.includes('spec=')) {
-            const titleElem = document.querySelector('.canvas-title-header');
-            const subtitleElem = document.querySelector('.canvas-subtitle-header');
-            if (titleElem) titleElem.textContent = "Waiting for Spec Link...";
-            if (subtitleElem) subtitleElem.textContent = "Provide a valid #spec= parameter in the URL or drop a .contract/.data file above.";
-            return;
-        }
-
-        try {
-            const encodedPayload = hash.split('spec=')[1].split('&')[0];
-            let jsonString = null;
-            if (typeof LZString !== 'undefined') {
-                jsonString = LZString.decompressFromEncodedURIComponent(encodedPayload);
-            }
-            if (!jsonString) {
-                jsonString = decodeURIComponent(escape(atob(encodedPayload)));
-            }
-
-            CURRENT_SPEC = JSON.parse(jsonString);
-
-            if (CURRENT_SPEC.sampleDataPackage) {
-                ACTIVE_PACKAGE_DATA = CURRENT_SPEC.sampleDataPackage;
-            }
-
-            runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
-        } catch (err) {
-            console.error("Failed to unpack dashboard spec from URL hash:", err);
-            alert("Invalid or corrupted dashboard specification link.");
-        }
+    const hash = window.location.hash;
+    if (!hash || !hash.includes('spec=')) {
+        const titleElem = document.querySelector('.canvas-title-header');
+        const subtitleElem = document.querySelector('.canvas-subtitle-header');
+        if (titleElem) titleElem.textContent = "Waiting for Spec Link...";
+        if (subtitleElem) subtitleElem.textContent = "Provide a valid #spec= parameter in the URL or drop a .contract/.data file above.";
+        return;
     }
+
+    try {
+        const rawPayload = hash.split('spec=')[1].split('&')[0];
+        let jsonString = null;
+
+        // 1. Primary: Canonical LZ-String decompress
+        if (typeof LZString !== 'undefined') {
+            try {
+                jsonString = LZString.decompressFromEncodedURIComponent(rawPayload);
+            } catch (e) {
+                jsonString = null;
+            }
+        }
+
+        // 2. Fallback: Base64 URL Safe / Standard
+        if (!jsonString) {
+            try {
+                const b64 = decodeURIComponent(rawPayload).replace(/-/g, '+').replace(/_/g, '/');
+                jsonString = decodeURIComponent(escape(atob(b64)));
+            } catch (e) {
+                jsonString = null;
+            }
+        }
+
+        // 3. Fallback: Plain URI Encoded JSON
+        if (!jsonString) {
+            try {
+                jsonString = decodeURIComponent(rawPayload);
+            } catch (e) {
+                jsonString = null;
+            }
+        }
+
+        CURRENT_SPEC = JSON.parse(jsonString);
+
+        if (CURRENT_SPEC.sampleDataPackage) {
+            ACTIVE_PACKAGE_DATA = CURRENT_SPEC.sampleDataPackage;
+        }
+
+        runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+    } catch (err) {
+        console.error("Failed to unpack dashboard spec from URL hash:", err);
+        alert("Invalid or corrupted dashboard specification link.");
+    }
+}
 
     document.addEventListener('DOMContentLoaded', () => {
         if (typeof initializeThemeDefault === 'function') initializeThemeDefault();
