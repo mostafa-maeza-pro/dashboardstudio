@@ -92,9 +92,9 @@
     <main id="globalCanvasShell" class="ui-global-canvas">
         <div id="ui-section-title-anchor">
             <div class="header-title-meta-group">
-                <h1 class="canvas-title-header">Initializing Workspace...</h1>
+                <h1 class="canvas-title-header">Calypso Studio Workspace</h1>
                 <div class="subtitle-area-container" style="display: inline-flex; align-items: center; gap: 8px;">
-                    <p class="canvas-subtitle-header"></p>
+                    <p class="canvas-subtitle-header">⚡ Standby | Waiting for dashboard specification</p>
                     <button id="ui-applied-criteria-trigger" class="studio-discreet-subtitle-btn" title="Fetch Data & Query Parameters">
                         <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                             <polyline points="23 4 23 10 17 10"></polyline>
@@ -126,81 +126,17 @@
         </section>
     </main>
 
-    <!-- DETERMINISTIC RUNTIME ENGINE & DATASET PERSISTENCE[cite: 3, 4] -->
+    <!-- GENERIC RUNTIME ENGINE (ZERO HARDCODED DOMAINS)[cite: 3, 4] -->
     <script>
     const IS_PRODUCTION_MODE = false;
 
-    // 1. Initial Contract Registries (Fallback Base)[cite: 3]
-    let CONTRACT_REGISTRY = {
-        "CashPositions": {
-            columns: [
-                { name: "Trade_ID" }, { name: "Counterparty" }, { name: "Currency" },
-                { name: "Notional_USD" }, { name: "Yield_Pct" }, { name: "SettlementDate" },
-                { name: "ValuationDate" }, { name: "24-Oct-2026" }, { name: "25-Oct-2026" },
-                { name: "26-Oct-2026" }, { name: "27-Oct-2026" }
-            ],
-            exposedCriteria: [
-                { name: "ValuationDate", type: "Datetime", defaultValue: "2026-10-23T10:00" },
-                { name: "LegalEntity", type: "String", defaultValue: "CORP_US" }
-            ],
-            presetCriteria: [
-                { name: "Settlement Status", fixedValue: "SETTLED" },
-                { name: "Ledger Type", fixedValue: "ACTUAL" }
-            ]
-        },
-        "DerivativesNPV": {
-            columns: [
-                { name: "Deal_Ref" }, { name: "AssetClass" }, { name: "NPV_USD" }, { name: "DV01" }
-            ],
-            exposedCriteria: [],
-            presetCriteria: [
-                { name: "Pricer Model", fixedValue: "DISC_OIS" }
-            ]
-        }
-    };
-    let CONTRACT_SCHEMA = CONTRACT_REGISTRY["CashPositions"];
+    // Blank State: Dynamically populated from URL spec or user uploads[cite: 3]
+    let CONTRACT_REGISTRY = {};
+    let ACTIVE_PACKAGE_DATA = {};
+    let currentDomain = "default";
+    let runtimeParser = null;
+    let CURRENT_SPEC = null;
 
-    // 2. Persistent Memory Buffer (Multi-Domain Dataset Storage)[cite: 3]
-    let ACTIVE_PACKAGE_DATA = {
-        "CashPositions": [
-            { "Trade_ID": "TRD-8491", "Counterparty": "BNP Paribas", "Currency": "USD", "Notional_USD": 520000000, "Yield_Pct": 5.25, "SettlementDate": "2026-10-24", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 120000000, "25-Oct-2026": 200000000, "26-Oct-2026": 150000000, "27-Oct-2026": 50000000 },
-            { "Trade_ID": "TRD-8492", "Counterparty": "JPMorgan Chase", "Currency": "EUR", "Notional_USD": 410000000, "Yield_Pct": 4.95, "SettlementDate": "2026-10-25", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 80000000, "25-Oct-2026": 110000000, "26-Oct-2026": 120000000, "27-Oct-2026": 100000000 },
-            { "Trade_ID": "TRD-8493", "Counterparty": "Citigroup", "Currency": "USD", "Notional_USD": 330000000, "Yield_Pct": 5.10, "SettlementDate": "2026-10-24", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 50000000, "25-Oct-2026": 90000000, "26-Oct-2026": 110000000, "27-Oct-2026": 80000000 },
-            { "Trade_ID": "TRD-8494", "Counterparty": "HSBC", "Currency": "GBP", "Notional_USD": 280000000, "Yield_Pct": 5.40, "SettlementDate": "2026-10-26", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 40000000, "25-Oct-2026": 60000000, "26-Oct-2026": 90000000, "27-Oct-2026": 90000000 },
-            { "Trade_ID": "TRD-8495", "Counterparty": "Goldman Sachs", "Currency": "USD", "Notional_USD": 190000000, "Yield_Pct": 5.05, "SettlementDate": "2026-10-27", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 30000000, "25-Oct-2026": 40000000, "26-Oct-2026": 70000000, "27-Oct-2026": 50000000 },
-            { "Trade_ID": "TRD-8496", "Counterparty": "Barclays", "Currency": "EUR", "Notional_USD": 110000000, "Yield_Pct": 4.80, "SettlementDate": "2026-10-25", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 20000000, "25-Oct-2026": 30000000, "26-Oct-2026": 40000000, "27-Oct-2026": 20000000 }
-        ],
-        "DerivativesNPV": [
-            { "Deal_Ref": "SWAP-901", "AssetClass": "Rates IRS", "NPV_USD": 14200000, "DV01": 18500 },
-            { "Deal_Ref": "FXO-402", "AssetClass": "FX Option", "NPV_USD": 6800000, "DV01": 9200 },
-            { "Deal_Ref": "XCCY-105", "AssetClass": "Cross-Currency", "NPV_USD": 3600000, "DV01": 12400 }
-        ]
-    };
-
-    // 3. Fallback Analytical Spec[cite: 4]
-    const DEFAULT_WORKSPACE_SPEC = {
-        metadata: {
-            title: "Treasury Exposure & Liquidity Monitor",
-            activeDomain: "CashPositions"
-        },
-        kpis: [
-            { label: "Total Net Notional", domain: "CashPositions", field: "Notional_USD", aggregation: "sum", format: { style: "currency" }, subtext: "Consolidated Cash Inventory" },
-            { label: "Net Mark-to-Market", domain: "DerivativesNPV", field: "NPV_USD", aggregation: "sum", format: { style: "currency" }, subtext: "Current Fair Value" },
-            { label: "Weighted Avg Yield", domain: "CashPositions", field: "Yield_Pct", weightField: "Notional_USD", aggregation: "weightedAvg", format: { style: "percent" }, subtext: "Portfolio Benchmark" },
-            { label: "Active Positions", domain: "CashPositions", field: "Trade_ID", aggregation: "count", format: { style: "number" }, subtext: "Settled & In-Flight" }
-        ],
-        charts: [
-            { id: "chart-exposure-cpty", title: "Exposure by Counterparty", domain: "CashPositions", type: "doughnut", dimensions: { groupBy: "Counterparty", topN: 5, otherBucket: true }, series: [{ field: "Notional_USD" }], isExpandable: true, hasDatasetToggle: true },
-            { id: "chart-maturity-horizon", title: "Daily Liquidity Horizon Trend", domain: "CashPositions", type: "bar", dynamicHorizon: { enabled: true, dateColumnPattern: "^\\d{2}-[A-Za-z]{3}-\\d{4}$" }, series: [{ type: "bar", label: "Projected Cashflow" }], isExpandable: true, hasDatasetToggle: true }
-        ],
-        datagrids: [
-            { id: "table-positions-matrix", isExpandable: true, domainNavigation: { enabled: true, defaultDomain: "CashPositions" } }
-        ]
-    };
-
-    /* =========================================================================
-       DETERMINISTIC COMPILATION ENGINE (DashboardRuntimeParser)[cite: 3, 4]
-       ========================================================================= */
     class DashboardRuntimeParser {
         constructor(options = {}) {
             this.spec = null;
@@ -225,9 +161,8 @@
             }
 
             const availableDomains = Object.keys(this.activeData);
-            if (!this.currentDomain || !this.activeData[this.currentDomain]) {
-                this.currentDomain = this.spec.metadata?.activeDomain || availableDomains[0] || "CashPositions";
-            }
+            this.currentDomain = this.spec.metadata?.activeDomain 
+                || (availableDomains.length > 0 ? availableDomains[0] : "default");
 
             this._hydrateHeaderMeta();
             this._hydrateCriteriaPanel(false);
@@ -254,11 +189,12 @@
                     ? formatSubtitleTimestamp(now) 
                     : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-                let valDate = "N/A";
-                const valDateField = this.spec.metadata?.subtitle?.valuationDateField || "ValuationDate";
+                let valDate = "Live Active";
                 const sampleRows = this.activeData[this.currentDomain] || [];
-                if (sampleRows.length > 0 && sampleRows[0][valDateField]) {
-                    valDate = sampleRows[0][valDateField];
+                if (sampleRows.length > 0) {
+                    // Detect date column or ValuationDate field
+                    const dateCol = Object.keys(sampleRows[0]).find(k => /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(k) || k.toLowerCase().includes('date'));
+                    if (dateCol) valDate = sampleRows[0][dateCol];
                 }
 
                 subtitleElem.textContent = "⚡ " + uploadTime + " | Valuation Date: " + valDate;
@@ -269,8 +205,9 @@
             const container = document.getElementById('studio-criteria-fields-container');
             if (!container) return;
 
+            const domainCfg = CONTRACT_REGISTRY[this.currentDomain] || {};
             const inputParameters = this.spec.criteriaDeck?.inputParameters 
-                || (CONTRACT_SCHEMA.exposedCriteria || []).map(c => ({ id: 'param-' + c.name, label: c.name, field: c.name, type: c.type, defaultValue: c.defaultValue }));
+                || (domainCfg.exposedCriteria || []).map(c => ({ id: 'param-' + c.name, label: c.name, field: c.name, type: c.type, defaultValue: c.defaultValue }));
 
             let html = '<div class="popover-primary-fields">' +
                 '<div class="popover-section-label">' +
@@ -284,26 +221,30 @@
                 '</div>' +
                 '<div class="popover-primary-scrollbox">';
 
-            inputParameters.forEach(param => {
-                const activeVal = (!isInitial && this.activeCriteria.find(c => c.name === param.field))?.value 
-                    ?? param.defaultValue 
-                    ?? "";
-                
-                const isDatetime = param.type === "Datetime";
-                const inputType = isDatetime ? "datetime-local" : "text";
-                const formattedVal = isDatetime && typeof formatIsoToDatetimeLocal === 'function'
-                    ? formatIsoToDatetimeLocal(activeVal)
-                    : activeVal;
+            if (inputParameters.length === 0) {
+                html += '<p style="font-size: 11px; opacity: 0.6; padding: 8px 0;">No adjustable parameters declared.</p>';
+            } else {
+                inputParameters.forEach(param => {
+                    const activeVal = (!isInitial && this.activeCriteria.find(c => c.name === param.field))?.value 
+                        ?? param.defaultValue 
+                        ?? "";
+                    
+                    const isDatetime = param.type === "Datetime";
+                    const inputType = isDatetime ? "datetime-local" : "text";
+                    const formattedVal = isDatetime && typeof formatIsoToDatetimeLocal === 'function'
+                        ? formatIsoToDatetimeLocal(activeVal)
+                        : activeVal;
 
-                html += '<div class="studio-form-group">' +
-                    '<label class="studio-form-label" for="param-' + param.field + '">' + param.label + '</label>' +
-                    '<input type="' + inputType + '" id="param-' + param.field + '" class="studio-form-input criteria-input-field" data-field="' + param.field + '" value="' + formattedVal + '">' +
-                '</div>';
-            });
+                    html += '<div class="studio-form-group">' +
+                        '<label class="studio-form-label" for="param-' + param.field + '">' + param.label + '</label>' +
+                        '<input type="' + inputType + '" id="param-' + param.field + '" class="studio-form-input criteria-input-field" data-field="' + param.field + '" value="' + formattedVal + '">' +
+                    '</div>';
+                });
+            }
 
             html += '</div></div>';
 
-            const auditDomains = Object.keys(this.spec.criteriaDeck?.preDefinedAudits?.domains || CONTRACT_REGISTRY || {});
+            const auditDomains = Object.keys(this.spec.criteriaDeck?.preDefinedAudits?.domains || CONTRACT_REGISTRY);
             if (auditDomains.length > 0) {
                 html += '<div class="popover-audit-context">' +
                     '<div class="popover-section-label">' +
@@ -314,9 +255,7 @@
                             '<span>Pre-Defined Criterias</span>' +
                         '</div>' +
                         '<button type="button" class="popover-fold-btn is-collapsed" id="studioAuditFoldBtn" title="Toggle View">' +
-                            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">' +
-                                '<polyline points="6 9 12 15 18 9"></polyline>' +
-                            '</svg>' +
+                            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
                         '</button>' +
                     '</div>' +
                     '<div class="popover-audit-scrollbox is-collapsed" id="studioAuditScrollbox">' +
@@ -337,12 +276,16 @@
                         '</div>' +
                         '<div class="contract-card-body" style="background: transparent !important;">';
 
-                    items.forEach(crit => {
-                        html += '<div class="studio-form-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">' +
-                            '<span class="studio-form-label" style="font-size: 12px;">' + crit.label + '</span>' +
-                            '<span class="criteria-read-only-tag">' + crit.fixedValue + '</span>' +
-                        '</div>';
-                    });
+                    if (items.length === 0) {
+                        html += '<p style="font-size: 11px; opacity: 0.6; padding: 4px 0;">No preset criteria locked.</p>';
+                    } else {
+                        items.forEach(crit => {
+                            html += '<div class="studio-form-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">' +
+                                '<span class="studio-form-label" style="font-size: 12px;">' + crit.label + '</span>' +
+                                '<span class="criteria-read-only-tag">' + crit.fixedValue + '</span>' +
+                            '</div>';
+                        });
+                    }
 
                     html += '</div></div>';
                 });
@@ -454,13 +397,14 @@
         }
 
         _buildChartDataModel(chartSpec, rows) {
+            // A. Dynamic Horizon
             if (chartSpec.dynamicHorizon?.enabled && rows.length > 0) {
-                const pattern = new RegExp(chartSpec.dynamicHorizon.dateColumnPattern || '^\\d{2}-[A-Za-z]{3}-\\d{4}$');
+                const pattern = new RegExp(chartSpec.dynamicHorizon.dateColumnPattern || '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$');
                 const dateHeaders = Object.keys(rows[0] || {}).filter(k => pattern.test(k));
 
-                const labels = dateHeaders;
-                const datasets = (chartSpec.series || [{ label: 'Projected Flow', color: '#38bdf8' }]).map(seriesCfg => {
-                    const dataPoints = dateHeaders.map(dateKey => {
+                const labels = dateHeaders.length > 0 ? dateHeaders : Object.keys(rows[0]).slice(-4);
+                const datasets = (chartSpec.series || [{ label: 'Valuation Flow', color: '#38bdf8' }]).map(seriesCfg => {
+                    const dataPoints = labels.map(dateKey => {
                         return rows.reduce((acc, r) => acc + (parseFloat(r[dateKey]) || 0), 0);
                     });
 
@@ -475,7 +419,7 @@
                     };
                 });
 
-                const tableRows = dateHeaders.map((dh, idx) => [dh, ...datasets.map(ds => this._formatValue(ds.data[idx], { style: 'currency' }))]);
+                const tableRows = labels.map((dh, idx) => [dh, ...datasets.map(ds => this._formatValue(ds.data[idx], { style: 'currency' }))]);
                 return {
                     labels,
                     datasets,
@@ -486,8 +430,9 @@
                 };
             }
 
-            const groupField = chartSpec.dimensions?.groupBy || "Counterparty";
-            const metricField = chartSpec.series?.[0]?.field || "Notional_USD";
+            // B. Categorical Grouping
+            const groupField = chartSpec.dimensions?.groupBy || Object.keys(rows[0] || {})[0] || "Category";
+            const metricField = chartSpec.series?.[0]?.field || Object.keys(rows[0] || {})[1] || "Amount";
             const groups = {};
 
             rows.forEach(r => {
@@ -571,7 +516,7 @@
 
             if (typeof createChassisComponent === 'function') {
                 const tableChassis = createChassisComponent(
-                    gridConfig.title || "Portfolio Position Matrix",
+                    gridConfig.title || (this.currentDomain + " Matrix"),
                     markup,
                     gridConfig.isExpandable ?? true,
                     gridConfig.id || "table-positions-matrix"
@@ -595,17 +540,24 @@
             const activeDom = this.currentDomain;
             const domState = this._getDomainState(activeDom);
             
+            // Dynamic column generator from actual data keys[cite: 3]
             const domainSchema = gridConfig.domains?.[activeDom] 
                 || (CONTRACT_REGISTRY[activeDom] ? {
                     columns: CONTRACT_REGISTRY[activeDom].columns.map(c => ({
                         key: c.name,
                         label: c.name.replace(/_/g, ' '),
                         sortable: true,
-                        format: c.name.includes('USD') ? 'currency' : (c.name.includes('Pct') ? 'percent' : undefined),
-                        footerAgg: c.name.includes('USD') ? 'SUM' : (c.name.includes('Pct') ? 'AVG' : (c.name.includes('ID') || c.name.includes('Ref') ? 'COUNT' : 'OFF'))
+                        format: typeof (this.activeData[activeDom]?.[0]?.[c.name]) === 'number' ? 'currency' : undefined,
+                        footerAgg: typeof (this.activeData[activeDom]?.[0]?.[c.name]) === 'number' ? 'SUM' : 'OFF'
                     }))
                 } : {
-                    columns: Object.keys(this.activeData[activeDom]?.[0] || {}).map(k => ({ key: k, label: k, sortable: true }))
+                    columns: Object.keys(this.activeData[activeDom]?.[0] || {}).map(k => ({
+                        key: k,
+                        label: k.replace(/_/g, ' '),
+                        sortable: true,
+                        format: typeof (this.activeData[activeDom]?.[0]?.[k]) === 'number' ? 'currency' : undefined,
+                        footerAgg: typeof (this.activeData[activeDom]?.[0]?.[k]) === 'number' ? 'SUM' : 'OFF'
+                    }))
                 });
 
             let tabsHtml = '';
@@ -878,22 +830,36 @@
 
     window.DashboardRuntimeParser = DashboardRuntimeParser;
 
-    let runtimeParser = null;
-    let CURRENT_SPEC = null;
-
-    // Spec Normalizer supporting both micro-AST and standard AST
+    // Normalizes both micro-ASTs and full dashboard-spec.json objects[cite: 3]
     function normalizeSpec(raw) {
+        const domainName = raw.d || raw.metadata?.activeDomain || "default";
+
+        // 1. Ingest embedded sample records directly into ACTIVE_PACKAGE_DATA[cite: 3]
+        if (raw.s && Array.isArray(raw.s) && raw.s.length > 0) {
+            ACTIVE_PACKAGE_DATA[domainName] = raw.s;
+        }
+
+        // 2. Dynamically extract schema columns from the sample row keys if absent[cite: 3]
+        if (!CONTRACT_REGISTRY[domainName] && ACTIVE_PACKAGE_DATA[domainName]?.[0]) {
+            CONTRACT_REGISTRY[domainName] = {
+                columns: Object.keys(ACTIVE_PACKAGE_DATA[domainName][0]).map(col => ({ name: col })),
+                exposedCriteria: [],
+                presetCriteria: []
+            };
+        }
+
         if (raw.kpis && raw.kpis[0] && typeof raw.kpis[0] === 'object' && !Array.isArray(raw.kpis[0])) {
             return raw;
         }
+
         return {
             metadata: {
-                title: raw.t || raw.title || "Treasury Exposure & Liquidity Monitor",
-                activeDomain: raw.d || raw.activeDomain || "CashPositions"
+                title: raw.t || raw.title || (domainName + " Dashboard"),
+                activeDomain: domainName
             },
             kpis: (raw.k || []).map(item => ({
                 label: item[0],
-                domain: item[1],
+                domain: item[1] || domainName,
                 field: item[2],
                 aggregation: item[3],
                 format: { style: item[4] === 'curr' ? 'currency' : (item[4] === 'pct' ? 'percent' : 'number') },
@@ -903,18 +869,18 @@
             charts: (raw.c || []).map(item => ({
                 id: item[0],
                 title: item[1],
-                domain: item[2],
+                domain: item[2] || domainName,
                 type: item[3],
                 dimensions: item[4] && item[4] !== 'dynamic' ? { groupBy: item[4] } : {},
                 series: item[5] ? [{ field: item[5], aggregation: 'sum', label: item[1] }] : [{ type: 'bar', label: item[1] }],
-                dynamicHorizon: item[4] === 'dynamic' ? { enabled: true, dateColumnPattern: '^\\d{2}-[A-Za-z]{3}-\\d{4}$' } : undefined,
+                dynamicHorizon: item[4] === 'dynamic' ? { enabled: true, dateColumnPattern: '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$' } : undefined,
                 isExpandable: true,
                 hasDatasetToggle: true
             })),
             datagrids: [{
                 id: "table-positions-matrix",
                 isExpandable: true,
-                domainNavigation: { enabled: true, defaultDomain: raw.d || "CashPositions" }
+                domainNavigation: { enabled: true, defaultDomain: domainName }
             }]
         };
     }
@@ -936,72 +902,39 @@
         runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
     }
 
-    function processIncomingPayloadGeneric(parsed) {
+    function processIncomingPayloadGeneric(parsed, filename = "") {
         if (!parsed) return false;
 
-        // Check if uploaded payload is a complete dashboard specification
+        // 1. Full Dashboard Specification
         if (parsed.kpis || parsed.contractRegistry || parsed.$schema) {
             applyCompleteSpec(parsed);
             return true;
         }
 
-        const isMultiSource = !!parsed.metadata?.packageId;
-        if (isMultiSource && CONTRACT_REGISTRY) {
-            const domain = parsed.metadata.domain || parsed.metadata.semanticDomain || parsed.metadata.templateId;
-            if (domain && CONTRACT_REGISTRY[domain]) {
-                ACTIVE_PACKAGE_DATA[domain] = parsed.sampleData || parsed.data || [];
-                return true;
-            }
-        }
+        // 2. Identify Target Domain dynamically
+        const cleanName = filename.replace(/\.(data|json|contract)$/i, '').trim();
+        const domain = parsed.metadata?.domain 
+            || parsed.metadata?.templateId 
+            || (cleanName && cleanName !== "data" ? cleanName : currentDomain);
 
-        const templateId = parsed.metadata?.templateId;
-        if (templateId && CONTRACT_REGISTRY && CONTRACT_REGISTRY[templateId]) {
-            ACTIVE_PACKAGE_DATA[templateId] = parsed.sampleData || parsed.data || [];
+        // 3. Contract Schema
+        if (parsed.columns || parsed.exposedCriteria) {
+            CONTRACT_REGISTRY[domain] = parsed;
+            if (parsed.sampleData) {
+                ACTIVE_PACKAGE_DATA[domain] = parsed.sampleData;
+            }
             return true;
         }
 
-        let matched = false;
-        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
-            Object.keys(parsed).forEach(dom => {
-                if (CONTRACT_REGISTRY && CONTRACT_REGISTRY[dom]) {
-                    ACTIVE_PACKAGE_DATA[dom] = parsed[dom];
-                    matched = true;
-                }
-            });
-            if (matched) return true;
+        // 4. Data Records Array
+        const rows = Array.isArray(parsed) ? parsed : (parsed.data || parsed.sampleData || []);
+        if (rows.length > 0) {
+            ACTIVE_PACKAGE_DATA[domain] = rows;
+            currentDomain = domain;
+            return true;
         }
 
-        const rows = Array.isArray(parsed) ? parsed : (parsed.sampleData || parsed.data);
-        if (rows && rows.length > 0 && typeof CONTRACT_REGISTRY === 'object') {
-            const keys = Object.keys(rows[0]);
-            let bestDom = null, maxOverlap = 0;
-            Object.keys(CONTRACT_REGISTRY).forEach(dom => {
-                const schemaCols = (CONTRACT_REGISTRY[dom].columns || []).map(c => c.name || c);
-                const overlap = keys.filter(k => schemaCols.includes(k)).length;
-                if (overlap > maxOverlap) {
-                    maxOverlap = overlap;
-                    bestDom = dom;
-                }
-            });
-            if (bestDom && maxOverlap > 0) {
-                ACTIVE_PACKAGE_DATA[bestDom] = rows;
-                return true;
-            }
-        }
         return false;
-    }
-
-    async function fetchDataFromCalypso() {
-        try {
-            const res = await fetch('/api/treasury/positions');
-            const data = await res.json();
-            const activeCriteria = data.appliedCriteria || [];
-            processIncomingPayloadGeneric(data);
-            runtimeParser.hydrate(CURRENT_SPEC || DEFAULT_WORKSPACE_SPEC, ACTIVE_PACKAGE_DATA, activeCriteria);
-        } catch (err) {
-            console.warn("Backend fetch failed, falling back to local dataset:", err);
-            runtimeParser.hydrate(CURRENT_SPEC || DEFAULT_WORKSPACE_SPEC, ACTIVE_PACKAGE_DATA);
-        }
     }
 
     function loadSpecFromUrl() {
@@ -1022,8 +955,7 @@
         }
 
         if (!rawPayload) {
-            CURRENT_SPEC = DEFAULT_WORKSPACE_SPEC;
-            runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+            // Standby state: wait for link, paste, or file drop[cite: 3]
             return;
         }
 
@@ -1051,82 +983,3 @@
 
             if (!jsonString) {
                 try {
-                    jsonString = cleanPayload;
-                } catch (e) {
-                    jsonString = null;
-                }
-            }
-
-            const parsed = JSON.parse(jsonString);
-            applyCompleteSpec(parsed);
-        } catch (err) {
-            console.error("Failed to unpack dashboard spec from URL:", err);
-            CURRENT_SPEC = DEFAULT_WORKSPACE_SPEC;
-            runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
-        }
-    }
-
-    document.addEventListener('DOMContentLoaded', () => {
-        if (typeof initializeThemeDefault === 'function') initializeThemeDefault();
-
-        runtimeParser = new DashboardRuntimeParser({
-            isProductionMode: IS_PRODUCTION_MODE
-        });
-
-        if (typeof bindModalEvents === 'function') {
-            bindModalEvents((targetId) => runtimeParser.chartInstances[targetId] || null);
-        }
-
-        // Single-Click Clipboard Sync Button Handler
-        const pasteBtn = document.getElementById('pasteSpecBtn');
-        if (pasteBtn) {
-            pasteBtn.addEventListener('click', async () => {
-                try {
-                    const clipText = await navigator.clipboard.readText();
-                    const parsed = JSON.parse(clipText);
-                    applyCompleteSpec(parsed);
-                } catch (err) {
-                    alert("Clipboard does not contain a valid JSON dashboard spec.");
-                }
-            });
-        }
-
-        window.addEventListener('popstate', loadSpecFromUrl);
-        window.addEventListener('hashchange', loadSpecFromUrl);
-        loadSpecFromUrl();
-
-        if (IS_PRODUCTION_MODE) {
-            const adminBar = document.getElementById('platformAdminBar');
-            if (adminBar) adminBar.style.display = 'none';
-            fetchDataFromCalypso();
-        } else {
-            const fileInput = document.getElementById('devFileInput');
-            if (fileInput) {
-                fileInput.addEventListener('change', async (e) => {
-                    const files = Array.from(e.target.files || []);
-                    if (!files || files.length === 0) return;
-
-                    let anySuccess = false;
-                    for (const file of files) {
-                        try {
-                            const text = await file.text();
-                            const parsed = JSON.parse(text);
-                            if (processIncomingPayloadGeneric(parsed)) anySuccess = true;
-                        } catch (err) {
-                            console.warn("Parse failure on: " + file.name, err);
-                        }
-                    }
-
-                    if (anySuccess) {
-                        runtimeParser.hydrate(CURRENT_SPEC || DEFAULT_WORKSPACE_SPEC, ACTIVE_PACKAGE_DATA);
-                    } else {
-                        alert("Layout violation: Requested operation breaches structural specifications.");
-                    }
-                    e.target.value = '';
-                });
-            }
-        }
-    });
-    </script>
-</body>
-</html>
