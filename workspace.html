@@ -5,42 +5,50 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Calypso Dashboard Studio - Workspace</title>
 
-    <!-- Global Presentation & Platform Styles -->
+    <!-- Global Presentation & Platform Styles[cite: 2] -->
     <link rel="stylesheet" href="https://mostafa-maeza-pro.github.io/dashboardstudio/GlobalStyle.css">
 
-    <!-- External Charting Engine & Compression Utilities -->
+    <!-- External Charting Engine & Compression Utilities[cite: 2] -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
-    <!-- Native Host Runtime Mechanics -->
+    <!-- Native Host Runtime Mechanics[cite: 4] -->
     <script src="https://mostafa-maeza-pro.github.io/dashboardstudio/PlatformRuntime.js"></script>
 </head>
 <body>
 
-    <!-- ZONE 1: System Admin Control Bar -->
+    <!-- ZONE 1: System Admin Control Bar[cite: 3] -->
     <header class="admin-system-header" id="platformAdminBar">
         <div class="header-left-section">
             <div class="header-title-block">
                 <h2 class="platform-title">📊 Calypso Dashboard Studio</h2>
-                <span class="platform-subtitle">Decoupled Runtime Workspace</span>
+                <span class="platform-subtitle">AI-powered Dashboard Creation Platform</span>
             </div>
         </div>
         
         <div class="header-right-controls">
-            <div class="upload-zone">
+            <div class="upload-zone" style="display: flex; align-items: center; gap: 8px;">
                 <label for="devFileInput" class="custom-file-upload">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
                     </svg>
-                    Upload Data File(s)
+                    Upload File(s)
                 </label>
                 <input type="file" id="devFileInput" accept=".contract,.data,.json" multiple>
+
+                <button type="button" id="pasteSpecBtn" class="custom-file-upload" style="background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; color: #38bdf8; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 4px; font-size: 12px; font-weight: 500;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                    </svg>
+                    Paste AI Spec
+                </button>
             </div>
 
             <div class="user-menu-container" id="userMenuWrapper">
                 <div class="user-menu-trigger" id="userMenuTrigger">
                     <div class="user-avatar" id="userAvatarAnchor">--</div>
-                    <span class="user-name" id="userNameAnchor">Dev Tester</span>
+                    <span class="user-name" id="userNameAnchor">Loading...</span>
                     <svg class="dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
@@ -57,7 +65,7 @@
         </div>
     </header>
 
-    <!-- Backdrop & Global Enlargement Modal -->
+    <!-- Backdrop & Global Enlargement Modal[cite: 2] -->
     <div id="studioPopoverBackdrop" class="studio-popover-backdrop"></div>
 
     <div id="ui-global-enlargement-modal">
@@ -80,7 +88,7 @@
         </div>
     </div>
 
-    <!-- ZONE 2: Global Canvas Shell -->
+    <!-- ZONE 2: Global Canvas Shell[cite: 2, 3] -->
     <main id="globalCanvasShell" class="ui-global-canvas">
         <div id="ui-section-title-anchor">
             <div class="header-title-meta-group">
@@ -118,10 +126,12 @@
         </section>
     </main>
 
+    <!-- DETERMINISTIC RUNTIME ENGINE & DATASET PERSISTENCE[cite: 3, 4] -->
     <script>
     const IS_PRODUCTION_MODE = false;
 
-    const CONTRACT_REGISTRY = {
+    // 1. Initial Contract Registries (Fallback Base)[cite: 3]
+    let CONTRACT_REGISTRY = {
         "CashPositions": {
             columns: [
                 { name: "Trade_ID" }, { name: "Counterparty" }, { name: "Currency" },
@@ -148,8 +158,9 @@
             ]
         }
     };
-    const CONTRACT_SCHEMA = CONTRACT_REGISTRY["CashPositions"];
+    let CONTRACT_SCHEMA = CONTRACT_REGISTRY["CashPositions"];
 
+    // 2. Persistent Memory Buffer (Multi-Domain Dataset Storage)[cite: 3]
     let ACTIVE_PACKAGE_DATA = {
         "CashPositions": [
             { "Trade_ID": "TRD-8491", "Counterparty": "BNP Paribas", "Currency": "USD", "Notional_USD": 520000000, "Yield_Pct": 5.25, "SettlementDate": "2026-10-24", "ValuationDate": "24-Oct-2026", "24-Oct-2026": 120000000, "25-Oct-2026": 200000000, "26-Oct-2026": 150000000, "27-Oct-2026": 50000000 },
@@ -166,6 +177,7 @@
         ]
     };
 
+    // 3. Fallback Analytical Spec[cite: 4]
     const DEFAULT_WORKSPACE_SPEC = {
         metadata: {
             title: "Treasury Exposure & Liquidity Monitor",
@@ -178,7 +190,7 @@
             { label: "Active Positions", domain: "CashPositions", field: "Trade_ID", aggregation: "count", format: { style: "number" }, subtext: "Settled & In-Flight" }
         ],
         charts: [
-            { id: "chart-exposure-cpty", title: "Exposure by Counterparty", domain: "CashPositions", type: "doughnut", dimensions: { groupBy: "Counterparty" }, series: [{ field: "Notional_USD" }], isExpandable: true, hasDatasetToggle: true },
+            { id: "chart-exposure-cpty", title: "Exposure by Counterparty", domain: "CashPositions", type: "doughnut", dimensions: { groupBy: "Counterparty", topN: 5, otherBucket: true }, series: [{ field: "Notional_USD" }], isExpandable: true, hasDatasetToggle: true },
             { id: "chart-maturity-horizon", title: "Daily Liquidity Horizon Trend", domain: "CashPositions", type: "bar", dynamicHorizon: { enabled: true, dateColumnPattern: "^\\d{2}-[A-Za-z]{3}-\\d{4}$" }, series: [{ type: "bar", label: "Projected Cashflow" }], isExpandable: true, hasDatasetToggle: true }
         ],
         datagrids: [
@@ -186,6 +198,9 @@
         ]
     };
 
+    /* =========================================================================
+       DETERMINISTIC COMPILATION ENGINE (DashboardRuntimeParser)[cite: 3, 4]
+       ========================================================================= */
     class DashboardRuntimeParser {
         constructor(options = {}) {
             this.spec = null;
@@ -211,7 +226,7 @@
 
             const availableDomains = Object.keys(this.activeData);
             if (!this.currentDomain || !this.activeData[this.currentDomain]) {
-                this.currentDomain = this.spec.metadata?.activeDomain || availableDomains[0] || "default";
+                this.currentDomain = this.spec.metadata?.activeDomain || availableDomains[0] || "CashPositions";
             }
 
             this._hydrateHeaderMeta();
@@ -754,3 +769,364 @@
                             sel.parentElement.querySelector('.agg-result-pill').style.display = 'inline-block';
                         }
                     });
+                }
+            });
+
+            document.addEventListener('change', (e) => {
+                if (!e.target.classList.contains('agg-col-select')) return;
+                const colKey = e.target.getAttribute('data-key');
+                const func = e.target.value;
+                const state = this._getDomainState(this.currentDomain);
+                state.aggregates[colKey] = func;
+
+                e.target.style.display = 'none';
+                e.target.parentElement.querySelector('.agg-result-pill').style.display = 'inline-block';
+                this._hydrateDataGrid();
+            });
+
+            const trigger = document.getElementById('ui-applied-criteria-trigger');
+            const popover = document.getElementById('studioCriteriaDropdown');
+            const backdrop = document.getElementById('studioPopoverBackdrop');
+            const closeBtn = document.getElementById('studioPopoverClose');
+            const cancelBtn = document.getElementById('studioPopoverCancel');
+            const submitBtn = document.getElementById('studioPopoverSubmit');
+
+            const togglePopover = (open) => {
+                if (popover && backdrop) {
+                    popover.classList.toggle('is-active', open);
+                    backdrop.classList.toggle('is-active', open);
+                }
+            };
+
+            if (trigger) trigger.onclick = () => togglePopover(true);
+            if (closeBtn) closeBtn.onclick = () => { togglePopover(false); this._hydrateCriteriaPanel(false); };
+            if (cancelBtn) cancelBtn.onclick = () => { togglePopover(false); this._hydrateCriteriaPanel(false); };
+            if (backdrop) backdrop.onclick = () => { togglePopover(false); this._hydrateCriteriaPanel(false); };
+
+            if (submitBtn) {
+                submitBtn.onclick = () => {
+                    const inputs = document.querySelectorAll('.criteria-input-field');
+                    this.activeCriteria = Array.from(inputs).map(inp => ({
+                        name: inp.getAttribute('data-field'),
+                        value: inp.value
+                    }));
+                    togglePopover(false);
+
+                    if (this.isProductionMode && typeof fetchDataFromCalypso === 'function') {
+                        fetchDataFromCalypso();
+                    } else {
+                        this.hydrate(this.spec, this.activeData, this.activeCriteria);
+                    }
+                };
+            }
+        }
+
+        _computeAggregation(rows, field, op, weightField = null) {
+            if (!rows || rows.length === 0) return 0;
+            if (op === 'count') return rows.length;
+
+            const vals = rows.map(r => parseFloat(r[field])).filter(v => !isNaN(v));
+            if (vals.length === 0) return 0;
+
+            if (op === 'sum') return vals.reduce((a, b) => a + b, 0);
+            if (op === 'avg') return vals.reduce((a, b) => a + b, 0) / vals.length;
+            if (op === 'weightedAvg' && weightField) {
+                let totalWeight = 0, sumProd = 0;
+                rows.forEach(r => {
+                    const v = parseFloat(r[field]), w = parseFloat(r[weightField]);
+                    if (!isNaN(v) && !isNaN(w)) {
+                        sumProd += v * w;
+                        totalWeight += w;
+                    }
+                });
+                return totalWeight !== 0 ? sumProd / totalWeight : 0;
+            }
+            return vals[0];
+        }
+
+        _formatValue(val, formatCfg = {}) {
+            if (val === null || val === undefined || isNaN(val)) return '-';
+            const num = parseFloat(val);
+
+            if (formatCfg.style === 'currency') {
+                return new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: formatCfg.currency || 'USD',
+                    notation: formatCfg.notation || 'standard',
+                    maximumFractionDigits: formatCfg.decimals ?? 2
+                }).format(num);
+            }
+
+            if (formatCfg.style === 'percent') {
+                return num.toFixed(formatCfg.decimals ?? 2) + '%';
+            }
+
+            return new Intl.NumberFormat('en-US', {
+                notation: formatCfg.notation || 'standard',
+                maximumFractionDigits: formatCfg.decimals ?? 0
+            }).format(num);
+        }
+
+        _initGlobalChartDefaults() {
+            if (typeof Chart !== 'undefined') {
+                Chart.defaults.color = '#94a3b8';
+                Chart.defaults.borderColor = 'rgba(255, 255, 255, 0.08)';
+                Chart.defaults.font.family = 'inherit';
+            }
+        }
+    }
+
+    window.DashboardRuntimeParser = DashboardRuntimeParser;
+
+    let runtimeParser = null;
+    let CURRENT_SPEC = null;
+
+    // Spec Normalizer supporting both micro-AST and standard AST
+    function normalizeSpec(raw) {
+        if (raw.kpis && raw.kpis[0] && typeof raw.kpis[0] === 'object' && !Array.isArray(raw.kpis[0])) {
+            return raw;
+        }
+        return {
+            metadata: {
+                title: raw.t || raw.title || "Treasury Exposure & Liquidity Monitor",
+                activeDomain: raw.d || raw.activeDomain || "CashPositions"
+            },
+            kpis: (raw.k || []).map(item => ({
+                label: item[0],
+                domain: item[1],
+                field: item[2],
+                aggregation: item[3],
+                format: { style: item[4] === 'curr' ? 'currency' : (item[4] === 'pct' ? 'percent' : 'number') },
+                subtext: item[5] || '',
+                weightField: item[6] || null
+            })),
+            charts: (raw.c || []).map(item => ({
+                id: item[0],
+                title: item[1],
+                domain: item[2],
+                type: item[3],
+                dimensions: item[4] && item[4] !== 'dynamic' ? { groupBy: item[4] } : {},
+                series: item[5] ? [{ field: item[5], aggregation: 'sum', label: item[1] }] : [{ type: 'bar', label: item[1] }],
+                dynamicHorizon: item[4] === 'dynamic' ? { enabled: true, dateColumnPattern: '^\\d{2}-[A-Za-z]{3}-\\d{4}$' } : undefined,
+                isExpandable: true,
+                hasDatasetToggle: true
+            })),
+            datagrids: [{
+                id: "table-positions-matrix",
+                isExpandable: true,
+                domainNavigation: { enabled: true, defaultDomain: raw.d || "CashPositions" }
+            }]
+        };
+    }
+
+    function applyCompleteSpec(specObject) {
+        if (!specObject) return;
+
+        if (specObject.contractRegistry) {
+            Object.assign(CONTRACT_REGISTRY, specObject.contractRegistry);
+        }
+
+        if (specObject.sampleData) {
+            Object.assign(ACTIVE_PACKAGE_DATA, specObject.sampleData);
+        } else if (specObject.sampleDataPackage) {
+            Object.assign(ACTIVE_PACKAGE_DATA, specObject.sampleDataPackage);
+        }
+
+        CURRENT_SPEC = normalizeSpec(specObject);
+        runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+    }
+
+    function processIncomingPayloadGeneric(parsed) {
+        if (!parsed) return false;
+
+        // Check if uploaded payload is a complete dashboard specification
+        if (parsed.kpis || parsed.contractRegistry || parsed.$schema) {
+            applyCompleteSpec(parsed);
+            return true;
+        }
+
+        const isMultiSource = !!parsed.metadata?.packageId;
+        if (isMultiSource && CONTRACT_REGISTRY) {
+            const domain = parsed.metadata.domain || parsed.metadata.semanticDomain || parsed.metadata.templateId;
+            if (domain && CONTRACT_REGISTRY[domain]) {
+                ACTIVE_PACKAGE_DATA[domain] = parsed.sampleData || parsed.data || [];
+                return true;
+            }
+        }
+
+        const templateId = parsed.metadata?.templateId;
+        if (templateId && CONTRACT_REGISTRY && CONTRACT_REGISTRY[templateId]) {
+            ACTIVE_PACKAGE_DATA[templateId] = parsed.sampleData || parsed.data || [];
+            return true;
+        }
+
+        let matched = false;
+        if (typeof parsed === 'object' && !Array.isArray(parsed)) {
+            Object.keys(parsed).forEach(dom => {
+                if (CONTRACT_REGISTRY && CONTRACT_REGISTRY[dom]) {
+                    ACTIVE_PACKAGE_DATA[dom] = parsed[dom];
+                    matched = true;
+                }
+            });
+            if (matched) return true;
+        }
+
+        const rows = Array.isArray(parsed) ? parsed : (parsed.sampleData || parsed.data);
+        if (rows && rows.length > 0 && typeof CONTRACT_REGISTRY === 'object') {
+            const keys = Object.keys(rows[0]);
+            let bestDom = null, maxOverlap = 0;
+            Object.keys(CONTRACT_REGISTRY).forEach(dom => {
+                const schemaCols = (CONTRACT_REGISTRY[dom].columns || []).map(c => c.name || c);
+                const overlap = keys.filter(k => schemaCols.includes(k)).length;
+                if (overlap > maxOverlap) {
+                    maxOverlap = overlap;
+                    bestDom = dom;
+                }
+            });
+            if (bestDom && maxOverlap > 0) {
+                ACTIVE_PACKAGE_DATA[bestDom] = rows;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    async function fetchDataFromCalypso() {
+        try {
+            const res = await fetch('/api/treasury/positions');
+            const data = await res.json();
+            const activeCriteria = data.appliedCriteria || [];
+            processIncomingPayloadGeneric(data);
+            runtimeParser.hydrate(CURRENT_SPEC || DEFAULT_WORKSPACE_SPEC, ACTIVE_PACKAGE_DATA, activeCriteria);
+        } catch (err) {
+            console.warn("Backend fetch failed, falling back to local dataset:", err);
+            runtimeParser.hydrate(CURRENT_SPEC || DEFAULT_WORKSPACE_SPEC, ACTIVE_PACKAGE_DATA);
+        }
+    }
+
+    function loadSpecFromUrl() {
+        let rawPayload = null;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('spec')) {
+            rawPayload = urlParams.get('spec');
+        }
+
+        if (!rawPayload && window.location.hash) {
+            const hash = window.location.hash;
+            if (hash.includes('spec=')) {
+                rawPayload = hash.split('spec=')[1].split('&')[0];
+            } else if (hash.length > 2) {
+                rawPayload = hash.substring(1);
+            }
+        }
+
+        if (!rawPayload) {
+            CURRENT_SPEC = DEFAULT_WORKSPACE_SPEC;
+            runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+            return;
+        }
+
+        try {
+            let jsonString = null;
+            const cleanPayload = decodeURIComponent(rawPayload).trim();
+
+            try {
+                let b64 = cleanPayload.replace(/-/g, '+').replace(/_/g, '/');
+                while (b64.length % 4 !== 0) {
+                    b64 += '=';
+                }
+                jsonString = decodeURIComponent(escape(atob(b64)));
+            } catch (e) {
+                jsonString = null;
+            }
+
+            if (!jsonString && typeof LZString !== 'undefined') {
+                try {
+                    jsonString = LZString.decompressFromEncodedURIComponent(cleanPayload);
+                } catch (e) {
+                    jsonString = null;
+                }
+            }
+
+            if (!jsonString) {
+                try {
+                    jsonString = cleanPayload;
+                } catch (e) {
+                    jsonString = null;
+                }
+            }
+
+            const parsed = JSON.parse(jsonString);
+            applyCompleteSpec(parsed);
+        } catch (err) {
+            console.error("Failed to unpack dashboard spec from URL:", err);
+            CURRENT_SPEC = DEFAULT_WORKSPACE_SPEC;
+            runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        if (typeof initializeThemeDefault === 'function') initializeThemeDefault();
+
+        runtimeParser = new DashboardRuntimeParser({
+            isProductionMode: IS_PRODUCTION_MODE
+        });
+
+        if (typeof bindModalEvents === 'function') {
+            bindModalEvents((targetId) => runtimeParser.chartInstances[targetId] || null);
+        }
+
+        // Single-Click Clipboard Sync Button Handler
+        const pasteBtn = document.getElementById('pasteSpecBtn');
+        if (pasteBtn) {
+            pasteBtn.addEventListener('click', async () => {
+                try {
+                    const clipText = await navigator.clipboard.readText();
+                    const parsed = JSON.parse(clipText);
+                    applyCompleteSpec(parsed);
+                } catch (err) {
+                    alert("Clipboard does not contain a valid JSON dashboard spec.");
+                }
+            });
+        }
+
+        window.addEventListener('popstate', loadSpecFromUrl);
+        window.addEventListener('hashchange', loadSpecFromUrl);
+        loadSpecFromUrl();
+
+        if (IS_PRODUCTION_MODE) {
+            const adminBar = document.getElementById('platformAdminBar');
+            if (adminBar) adminBar.style.display = 'none';
+            fetchDataFromCalypso();
+        } else {
+            const fileInput = document.getElementById('devFileInput');
+            if (fileInput) {
+                fileInput.addEventListener('change', async (e) => {
+                    const files = Array.from(e.target.files || []);
+                    if (!files || files.length === 0) return;
+
+                    let anySuccess = false;
+                    for (const file of files) {
+                        try {
+                            const text = await file.text();
+                            const parsed = JSON.parse(text);
+                            if (processIncomingPayloadGeneric(parsed)) anySuccess = true;
+                        } catch (err) {
+                            console.warn("Parse failure on: " + file.name, err);
+                        }
+                    }
+
+                    if (anySuccess) {
+                        runtimeParser.hydrate(CURRENT_SPEC || DEFAULT_WORKSPACE_SPEC, ACTIVE_PACKAGE_DATA);
+                    } else {
+                        alert("Layout violation: Requested operation breaches structural specifications.");
+                    }
+                    e.target.value = '';
+                });
+            }
+        }
+    });
+    </script>
+</body>
+</html>
