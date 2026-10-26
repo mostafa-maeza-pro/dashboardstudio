@@ -1053,7 +1053,14 @@
                     const reader = new FileReader();
                     reader.onload = (evt) => {
                         try {
-                            const parsed = JSON.parse(evt.target.result);
+                            // Extract text safely from the inner FileReader event (evt)
+                            const rawText = evt.target.result || "";
+                            
+                            // Strip out the [<DATE>] wildcard object structure from arrays
+                            const sanitizedText = String(rawText).replace(/,\s*"\[<DATE>\]"\s*:\s*"[^"]*"/g, '');
+                            
+                            // Parse the cleaned text, NOT the raw text
+                            const parsed = JSON.parse(sanitizedText);
                             processIncomingPayloadGeneric(parsed, file.name);
                         } catch (err) {
                             console.error("Payload read error:", err);
