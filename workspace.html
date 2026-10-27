@@ -17,6 +17,17 @@
 </head>
 <body>
 
+    <!-- MODERN GLASSMORPHIC LOADING OVERLAY -->
+    <div id="studioGlobalLoader" style="display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); z-index: 99999; justify-content: center; align-items: center; flex-direction: column;">
+        <div style="background: rgba(30, 41, 59, 0.92); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 22px 30px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5); min-width: 240px;">
+            <div class="studio-loader-spinner" style="width: 42px; height: 42px; border: 3px solid rgba(56, 189, 248, 0.15); border-top-color: #38bdf8; border-right-color: #38bdf8; border-radius: 50%; animation: studioSpin 0.75s cubic-bezier(0.4, 0, 0.2, 1) infinite; margin-bottom: 12px;"></div>
+            <span id="studioLoaderMsg" style="color: #f8fafc; font-size: 13px; font-weight: 600; letter-spacing: 0.3px; font-family: inherit;">Hydrating Workspace...</span>
+        </div>
+        <style>
+            @keyframes studioSpin { to { transform: rotate(360deg); } }
+        </style>
+    </div>
+
     <!-- ZONE 1: System Admin Control Bar -->
     <header class="admin-system-header" id="platformAdminBar">
         <div class="header-left-section">
@@ -55,7 +66,7 @@
                 </div>
                 <div class="user-menu-dropdown" id="userMenuDropdown">
                     <div class="user-menu-item" id="themeToggleBtn">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                         </svg>
                         Toggle Dark Mode
@@ -136,6 +147,34 @@
     let runtimeParser = null;
     let CURRENT_SPEC = null;
 
+    // Async Non-Blocking Task Executor for Visual Responsiveness
+    function setWorkspaceLoading(isLoading, message = 'Processing Dataset...') {
+        const loader = document.getElementById('studioGlobalLoader');
+        const msgElem = document.getElementById('studioLoaderMsg');
+        if (!loader) return;
+        if (isLoading) {
+            if (msgElem) msgElem.textContent = message;
+            loader.style.display = 'flex';
+        } else {
+            loader.style.display = 'none';
+        }
+    }
+
+    function runAsyncWithLoader(taskFn, message = 'Processing Dataset...') {
+        setWorkspaceLoading(true, message);
+        requestAnimationFrame(() => {
+            setTimeout(() => {
+                try {
+                    taskFn();
+                } catch (err) {
+                    console.error("Hydration runtime error:", err);
+                } finally {
+                    setWorkspaceLoading(false);
+                }
+            }, 35);
+        });
+    }
+
     // Financial string to clean float parser
     function cleanNumber(val) {
         if (typeof val === 'number') return val;
@@ -153,6 +192,7 @@
             this.chartInstances = {};
             this.domainTableStates = {};
             this.currentDomain = null;
+            this.modalChartInstance = null;
             this.isProductionMode = options.isProductionMode ?? false;
 
             this._initGlobalChartDefaults();
@@ -181,6 +221,22 @@
             if (typeof bindChartInteractiveEvents === 'function') {
                 bindChartInteractiveEvents();
             }
+        }
+
+        // Dynamic Field Resolver for Wildcard Tokens ([LATEST_DATE], [<DATE>], [FIRST_DATE])
+        _resolveField(field, rows = []) {
+            if (!rows || rows.length === 0) return field;
+            
+            const datePattern = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$|^\d{4}-\d{2}-\d{2}$/;
+            const dateCols = Object.keys(rows[0]).filter(k => datePattern.test(k.trim()));
+
+            if (!field || field === '[<DATE>]' || field === '[LATEST_DATE]' || (datePattern.test(field) && !(field in rows[0]))) {
+                return dateCols.length > 0 ? dateCols[dateCols.length - 1] : field;
+            }
+            if (field === '[FIRST_DATE]') {
+                return dateCols.length > 0 ? dateCols[0] : field;
+            }
+            return field;
         }
 
         _hydrateHeaderMeta() {
@@ -341,7 +397,9 @@
 
             (this.spec.kpis || []).forEach(kpiSpec => {
                 const domainRows = this.activeData[kpiSpec.domain || this.currentDomain] || [];
-                const rawVal = this._computeAggregation(domainRows, kpiSpec.field, kpiSpec.aggregation, kpiSpec.weightField);
+                const targetField = this._resolveField(kpiSpec.field, domainRows);
+
+                const rawVal = this._computeAggregation(domainRows, targetField, kpiSpec.aggregation, kpiSpec.weightField);
                 const formattedVal = this._formatValue(rawVal, kpiSpec.format);
 
                 const cardHtml = '<div class="kpi-label-text">' + kpiSpec.label + '</div>' +
@@ -359,7 +417,6 @@
             const outlet = document.getElementById('ui-charts-container-outlet');
             if (!outlet) return;
 
-            // Destroy previous chart instances before DOM refresh
             Object.values(this.chartInstances).forEach(chart => {
                 if (chart && typeof chart.destroy === 'function') {
                     chart.destroy();
@@ -400,30 +457,41 @@
                 const canvas = document.getElementById(chartId);
                 if (canvas) {
                     const ctx = canvas.getContext('2d');
+                    const chartType = chartSpec.type === 'horizontalBar' ? 'bar' : (chartSpec.type || 'bar');
+                    const chartOpts = this._buildChartOptions(chartSpec);
+
+                    if (chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y') {
+                        chartOpts.indexAxis = 'y';
+                    }
+
                     this.chartInstances[chartId] = new Chart(ctx, {
-                        type: chartSpec.type || 'bar',
+                        type: chartType,
                         data: { labels, datasets },
-                        options: this._buildChartOptions(chartSpec)
+                        options: chartOpts
                     });
                 }
             });
         }
 
         _buildChartDataModel(chartSpec, rows) {
-            // A. Dynamic Horizon
-            if (chartSpec.dynamicHorizon?.enabled && rows.length > 0) {
-                const pattern = new RegExp(chartSpec.dynamicHorizon.dateColumnPattern || '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$');
+            const hasCategoryGrouping = Boolean(chartSpec.dimensions?.groupBy || chartSpec.categoryAxis);
+
+            // A. Dynamic Horizon Trend Chart
+            if (chartSpec.dynamicHorizon?.enabled && !hasCategoryGrouping && rows.length > 0) {
+                const pattern = new RegExp(chartSpec.dynamicHorizon.dateColumnPattern || '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$|^\\d{4}-\\d{2}-\\d{2}$');
                 const dateHeaders = Object.keys(rows[0] || {}).filter(k => pattern.test(k));
 
                 const labels = dateHeaders.length > 0 ? dateHeaders : Object.keys(rows[0]).slice(-4);
-                const datasets = (chartSpec.series || [{ label: 'Valuation Flow', color: '#38bdf8' }]).map(seriesCfg => {
+                const defaultLabel = chartSpec.title || (this.currentDomain + ' Total');
+                
+                const datasets = (chartSpec.series || [{ label: defaultLabel, color: '#38bdf8' }]).map(seriesCfg => {
                     const dataPoints = labels.map(dateKey => {
                         return rows.reduce((acc, r) => acc + cleanNumber(r[dateKey]), 0);
                     });
 
                     return {
-                        label: seriesCfg.label || chartSpec.title,
-                        type: seriesCfg.type || chartSpec.type,
+                        label: seriesCfg.label || defaultLabel,
+                        type: seriesCfg.type || chartSpec.type || 'bar',
                         data: dataPoints,
                         borderColor: seriesCfg.color || '#38bdf8',
                         backgroundColor: seriesCfg.type === 'line' ? 'transparent' : (seriesCfg.color || 'rgba(56, 189, 248, 0.4)'),
@@ -443,21 +511,26 @@
                 };
             }
 
-            // B. Categorical Grouping
-            const groupField = chartSpec.dimensions?.groupBy || Object.keys(rows[0] || {})[0] || "Category";
-            const metricField = chartSpec.series?.[0]?.field || Object.keys(rows[0] || {})[1] || "Amount";
-            const groups = {};
+            // B. Categorical Grouping (Distribution / Allocation by Dimension)
+            const groupField = chartSpec.dimensions?.groupBy || chartSpec.categoryAxis || Object.keys(rows[0] || {})[0] || "Category";
+            let metricField = this._resolveField(chartSpec.series?.[0]?.field || chartSpec.valueAxis, rows);
+            
+            if (!metricField && rows.length > 0) {
+                metricField = Object.keys(rows[0] || {})[1] || "Amount";
+            }
 
+            const groups = {};
             rows.forEach(r => {
-                const key = r[groupField] || "Other";
+                const key = r[groupField] !== undefined && r[groupField] !== null ? String(r[groupField]) : "Other";
                 groups[key] = (groups[key] || 0) + cleanNumber(r[metricField]);
             });
 
             let sortedKeys = Object.keys(groups).sort((a, b) => Math.abs(groups[b]) - Math.abs(groups[a]));
-            if (chartSpec.dimensions?.topN && sortedKeys.length > chartSpec.dimensions.topN) {
-                const topKeys = sortedKeys.slice(0, chartSpec.dimensions.topN);
-                if (chartSpec.dimensions.otherBucket) {
-                    const otherVal = sortedKeys.slice(chartSpec.dimensions.topN).reduce((sum, k) => sum + groups[k], 0);
+            const topN = chartSpec.dimensions?.topN || chartSpec.topN;
+            if (topN && sortedKeys.length > topN) {
+                const topKeys = sortedKeys.slice(0, topN);
+                if (chartSpec.dimensions?.otherBucket ?? chartSpec.otherBucket ?? true) {
+                    const otherVal = sortedKeys.slice(topN).reduce((sum, k) => sum + groups[k], 0);
                     groups["Other"] = otherVal;
                     topKeys.push("Other");
                 }
@@ -466,8 +539,10 @@
 
             const labels = sortedKeys;
             const palette = chartSpec.palette || ['#38bdf8', '#6366f1', '#34d399', '#f59e0b', '#f43f5e', '#94a3b8'];
+            const seriesLabel = chartSpec.series?.[0]?.label || chartSpec.title || metricField;
+
             const datasets = [{
-                label: chartSpec.series?.[0]?.label || metricField,
+                label: seriesLabel,
                 data: labels.map(l => groups[l]),
                 backgroundColor: palette.slice(0, labels.length),
                 borderColor: 'rgba(255,255,255,0.1)',
@@ -479,13 +554,15 @@
                 labels,
                 datasets,
                 tableData: {
-                    headers: [groupField, chartSpec.series?.[0]?.label || 'Amount'],
+                    headers: [groupField, seriesLabel],
                     rows: tableRows
                 }
             };
         }
 
         _buildChartOptions(chartSpec) {
+            const isHorizontal = chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y';
+
             return {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -496,12 +573,13 @@
                     }
                 },
                 scales: chartSpec.type === 'doughnut' ? {} : {
-                    x: { grid: { display: false } },
+                    x: {
+                        grid: { color: isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
+                        ticks: isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
+                    },
                     y: {
-                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                        ticks: {
-                            callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' })
-                        }
+                        grid: { color: !isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
+                        ticks: !isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
                     }
                 }
             };
@@ -553,30 +631,52 @@
             const activeDom = this.currentDomain;
             const domState = this._getDomainState(activeDom);
             
-            const domainSchema = gridConfig.domains?.[activeDom] 
-                || (CONTRACT_REGISTRY[activeDom] ? {
-                    columns: CONTRACT_REGISTRY[activeDom].columns.map(c => {
-                        const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(c.name) || /balance|amount|notional|npv|mtm|value/i.test(c.name);
-                        return {
-                            key: c.name,
-                            label: c.name.replace(/_/g, ' '),
-                            sortable: true,
-                            format: isDateOrAmt ? 'currency' : undefined,
-                            footerAgg: isDateOrAmt ? 'SUM' : (c.name.toLowerCase().includes('client') || c.name.toLowerCase().includes('id') ? 'COUNT' : 'OFF')
-                        };
-                    })
-                } : {
-                    columns: Object.keys(this.activeData[activeDom]?.[0] || {}).map(k => {
-                        const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(k) || /balance|amount|notional|npv|mtm|value/i.test(k);
-                        return {
-                            key: k,
-                            label: k.replace(/_/g, ' '),
-                            sortable: true,
-                            format: isDateOrAmt ? 'currency' : undefined,
-                            footerAgg: isDateOrAmt ? 'SUM' : (k.toLowerCase().includes('client') || k.toLowerCase().includes('id') ? 'COUNT' : 'OFF')
-                        };
-                    })
-                });
+            const rawCols = CONTRACT_REGISTRY[activeDom]?.columns;
+            let normalizedCols = [];
+
+            if (Array.isArray(rawCols)) {
+                normalizedCols = rawCols.map(c => typeof c === 'string' ? { name: c } : c);
+            } else if (rawCols && typeof rawCols === 'object') {
+                normalizedCols = Object.keys(rawCols).map(k => ({ name: k, type: rawCols[k] }));
+            } else if (this.activeData[activeDom]?.[0]) {
+                normalizedCols = Object.keys(this.activeData[activeDom][0]).map(k => ({ name: k }));
+            }
+            
+            // Expand [<DATE>] wildcard into concrete sampleData horizon dates
+            const expandedCols = [];
+            const datePattern = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$|^\d{4}-\d{2}-\d{2}$/;
+            normalizedCols.forEach(c => {
+                if (c.name === '[<DATE>]') {
+                    const sampleRow = this.activeData[activeDom]?.[0] || {};
+                    const dateKeys = Object.keys(sampleRow).filter(k => datePattern.test(k.trim()));
+                    dateKeys.forEach(dk => expandedCols.push({ name: dk, type: 'Number' }));
+                } else {
+                    expandedCols.push(c);
+                }
+            });
+            normalizedCols = expandedCols;
+
+            const domainSchema = gridConfig.domains?.[activeDom] || {
+                columns: normalizedCols.map(c => {
+                    const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(c.name) || /balance|amount|notional|npv|mtm|value/i.test(c.name);
+                    
+                    const defaultAgg = gridConfig.footerAggregates?.[c.name] 
+                        || (isDateOrAmt ? (gridConfig.footerAggregates?.['[<DATE>]'] || 'SUM') : (c.name.toLowerCase().includes('client') || c.name.toLowerCase().includes('id') ? 'COUNT' : 'OFF'));
+                    
+                    return {
+                        key: c.name,
+                        label: c.name.replace(/_/g, ' '),
+                        sortable: true,
+                        format: isDateOrAmt ? 'currency' : undefined,
+                        footerAgg: defaultAgg
+                    };
+                })
+            };
+
+            if (!domState.sortKey && gridConfig.defaultSort?.column) {
+                domState.sortKey = this._resolveField(gridConfig.defaultSort.column, this.activeData[activeDom]);
+                domState.sortDir = gridConfig.defaultSort.direction === 'asc' ? 1 : -1;
+            }
 
             let tabsHtml = '';
             if (availableDomains.length > 1) {
@@ -771,7 +871,11 @@
             if (trigger) trigger.onclick = () => togglePopover(true);
             if (closeBtn) closeBtn.onclick = () => { togglePopover(false); this._hydrateCriteriaPanel(false); };
             if (cancelBtn) cancelBtn.onclick = () => { togglePopover(false); this._hydrateCriteriaPanel(false); };
-            if (backdrop) backdrop.onclick = () => { togglePopover(false); this._hydrateCriteriaPanel(false); };
+            if (backdrop) backdrop.onclick = () => { 
+                togglePopover(false); 
+                this._hydrateCriteriaPanel(false);
+                closeModal();
+            };
 
             if (submitBtn) {
                 submitBtn.onclick = () => {
@@ -782,13 +886,139 @@
                     }));
                     togglePopover(false);
 
-                    if (this.isProductionMode && typeof fetchDataFromCalypso === 'function') {
-                        fetchDataFromCalypso();
-                    } else {
-                        this.hydrate(this.spec, this.activeData, this.activeCriteria);
-                    }
+                    runAsyncWithLoader(() => {
+                        if (this.isProductionMode && typeof fetchDataFromCalypso === 'function') {
+                            fetchDataFromCalypso();
+                        } else {
+                            this.hydrate(this.spec, this.activeData, this.activeCriteria);
+                        }
+                    }, 'Refreshing Valuation & Criteria...');
                 };
             }
+
+            // --- MODAL ZOOM / ENLARGEMENT HANDLERS ---
+            const closeModal = () => {
+                const modal = document.getElementById('ui-global-enlargement-modal');
+                const bd = document.getElementById('studioPopoverBackdrop');
+                if (modal) modal.classList.remove('is-active', 'active');
+                if (bd) bd.classList.remove('is-active', 'active');
+                if (this.modalChartInstance) {
+                    this.modalChartInstance.destroy();
+                    this.modalChartInstance = null;
+                }
+            };
+
+            const modalCloseBtn = document.getElementById('ui-modal-close-btn');
+            if (modalCloseBtn) modalCloseBtn.onclick = closeModal;
+
+            // Expand / Zoom Click Delegation (Card-Isolated Resolution)
+            document.addEventListener('click', (e) => {
+                const expandBtn = e.target.closest('.ui-chassis-expand-btn, .chassis-expand-btn, button[title*="Enlarge"], button[title*="Expand"], button[data-action="expand"]');
+                if (!expandBtn) return;
+
+                // Accurately resolve the immediate chassis card container
+                let chassis = expandBtn.closest('.ui-chassis, .ui-chassis-card, .chassis-card, .ui-chassis-container');
+                if (!chassis || chassis.tagName === 'SECTION' || chassis.classList.contains('dashboard-workspace')) {
+                    let curr = expandBtn;
+                    while (curr && curr.parentElement) {
+                        if (curr.parentElement.id && curr.parentElement.id.includes('-outlet')) {
+                            chassis = curr;
+                            break;
+                        }
+                        curr = curr.parentElement;
+                    }
+                }
+                if (!chassis) return;
+
+                const modal = document.getElementById('ui-global-enlargement-modal');
+                const modalBody = document.getElementById('ui-modal-body-content');
+                const modalTitle = document.getElementById('ui-modal-title-text');
+                const bd = document.getElementById('studioPopoverBackdrop');
+                const viewSwitch = document.getElementById('modalViewSwitch');
+                if (!modal || !modalBody) return;
+
+                // Clean up previous modal chart instance if present
+                if (this.modalChartInstance) {
+                    this.modalChartInstance.destroy();
+                    this.modalChartInstance = null;
+                }
+
+                // Sync Title
+                const titleElem = chassis.querySelector('.ui-chassis-title, .chassis-title, h3, h4');
+                if (modalTitle && titleElem) {
+                    modalTitle.textContent = titleElem.textContent.trim();
+                }
+
+                const canvas = chassis.querySelector('canvas');
+                if (canvas && this.chartInstances[canvas.id]) {
+                    // Zooming a Chart
+                    if (viewSwitch) viewSwitch.style.display = 'inline-flex';
+                    const origChart = this.chartInstances[canvas.id];
+                    const dataPanel = chassis.querySelector('.chart-data-panel');
+                    const dataTableHtml = dataPanel ? dataPanel.innerHTML : '';
+
+                    modalBody.innerHTML = `
+                        <div class="chart-panel-content chart-visual-panel" style="position: relative; height: 500px; width: 100%;">
+                            <canvas id="modal-enlarged-canvas"></canvas>
+                        </div>
+                        <div class="chart-panel-content chart-data-panel is-hidden" style="max-height: 500px; overflow: auto; width: 100%;">
+                            ${dataTableHtml}
+                        </div>
+                    `;
+
+                    // Reset switcher to visual view
+                    document.querySelectorAll('#modalViewSwitch .chassis-switch-btn').forEach(b => {
+                        b.classList.toggle('active', b.getAttribute('data-view') === 'visual');
+                    });
+
+                    // Mount cloned Chart.js instance in the modal
+                    const modalCanvas = document.getElementById('modal-enlarged-canvas');
+                    if (modalCanvas && typeof Chart !== 'undefined') {
+                        this.modalChartInstance = new Chart(modalCanvas.getContext('2d'), {
+                            type: origChart.config.type,
+                            data: JSON.parse(JSON.stringify(origChart.config.data)),
+                            options: {
+                                ...origChart.config.options,
+                                responsive: true,
+                                maintainAspectRatio: false
+                            }
+                        });
+                    }
+                } else {
+                    // Zooming the DataGrid Matrix
+                    if (viewSwitch) viewSwitch.style.display = 'none';
+                    const gridConfig = this.spec?.datagrids?.[0] || { id: "table-positions-matrix" };
+                    modalBody.innerHTML = this._generateDataGridMarkup(gridConfig);
+                }
+
+                modal.classList.add('is-active', 'active');
+                if (bd) bd.classList.add('is-active', 'active');
+            });
+
+            // View Switcher Delegation (Visual Chart vs Supporting Dataset)
+            document.addEventListener('click', (e) => {
+                const switchBtn = e.target.closest('#modalViewSwitch .chassis-switch-btn');
+                if (!switchBtn) return;
+
+                const view = switchBtn.getAttribute('data-view');
+                document.querySelectorAll('#modalViewSwitch .chassis-switch-btn').forEach(b => b.classList.remove('active'));
+                switchBtn.classList.add('active');
+
+                const modalBody = document.getElementById('ui-modal-body-content');
+                if (!modalBody) return;
+
+                const visualPanel = modalBody.querySelector('.chart-visual-panel');
+                const dataPanel = modalBody.querySelector('.chart-data-panel');
+                if (visualPanel && dataPanel) {
+                    if (view === 'visual') {
+                        visualPanel.classList.remove('is-hidden');
+                        dataPanel.classList.add('is-hidden');
+                    } else {
+                        visualPanel.classList.add('is-hidden');
+                        dataPanel.classList.remove('is-hidden');
+                    }
+                }
+            });
         }
 
         _computeAggregation(rows, field, op, weightField = null) {
@@ -849,31 +1079,32 @@
 
     window.DashboardRuntimeParser = DashboardRuntimeParser;
 
+    // Tolerant Normalization Adapter for Any AST Variation
     function normalizeSpec(raw) {
-        const domainName = raw.d || raw.metadata?.activeDomain || "default";
+        if (!raw) return null;
+        const domainName = raw.d || raw.metadata?.activeDomain || Object.keys(raw.contractRegistry || {})[0] || "default";
 
         if (raw.s && Array.isArray(raw.s) && raw.s.length > 0) {
             ACTIVE_PACKAGE_DATA[domainName] = raw.s;
         }
 
-        if (!CONTRACT_REGISTRY[domainName] && ACTIVE_PACKAGE_DATA[domainName]?.[0]) {
-            CONTRACT_REGISTRY[domainName] = {
-                columns: Object.keys(ACTIVE_PACKAGE_DATA[domainName][0]).map(col => ({ name: col })),
-                exposedCriteria: [],
-                presetCriteria: []
-            };
-        }
-
-        if (raw.kpis && raw.kpis[0] && typeof raw.kpis[0] === 'object' && !Array.isArray(raw.kpis[0])) {
-            return raw;
-        }
-
-        return {
-            metadata: {
-                title: raw.t || raw.title || (domainName + " Dashboard"),
-                activeDomain: domainName
-            },
-            kpis: (raw.k || []).map(item => ({
+        let kpis = [];
+        if (Array.isArray(raw.kpis)) {
+            kpis = raw.kpis.map((item, idx) => ({
+                id: item.id || ('kpi-' + idx),
+                label: item.label || item.title || item.metric || 'Metric',
+                field: item.field || item.metric,
+                aggregation: item.aggregation || 'sum',
+                format: typeof item.format === 'string' 
+                    ? { style: item.format.includes('curr') ? 'currency' : (item.format.includes('pct') ? 'percent' : 'number'), currency: 'USD' } 
+                    : (item.format || { style: 'currency', currency: 'USD' }),
+                domain: item.domain || domainName,
+                subtext: item.subtext || '',
+                dynamicHorizon: item.dynamicHorizon
+            }));
+        } else if (Array.isArray(raw.k)) {
+            kpis = raw.k.map((item, idx) => ({
+                id: 'kpi-' + idx,
                 label: item[0],
                 domain: item[1] || domainName,
                 field: item[2],
@@ -881,8 +1112,33 @@
                 format: { style: item[4] === 'curr' ? 'currency' : (item[4] === 'pct' ? 'percent' : 'number') },
                 subtext: item[5] || '',
                 weightField: item[6] || null
-            })),
-            charts: (raw.c || []).map(item => ({
+            }));
+        }
+
+        let charts = [];
+        if (Array.isArray(raw.charts)) {
+            charts = raw.charts.map((item, idx) => {
+                const isHorizontal = item.type === 'horizontalBar' || item.indexAxis === 'y';
+                const groupField = item.dimensions?.groupBy || item.categoryAxis || item.dimension;
+                const valField = item.series?.[0]?.field || item.valueAxis || item.metric;
+
+                return {
+                    id: item.id || ('chart-' + idx),
+                    title: item.title,
+                    domain: item.domain || domainName,
+                    type: isHorizontal ? 'bar' : (item.type || 'bar'),
+                    indexAxis: isHorizontal ? 'y' : 'x',
+                    categoryAxis: groupField,
+                    valueAxis: valField,
+                    dimensions: item.dimensions || (groupField ? { groupBy: groupField, topN: item.topN || 6, otherBucket: item.otherBucket ?? true } : {}),
+                    series: item.series || (valField ? [{ field: valField, label: item.title }] : [{ label: item.title }]),
+                    dynamicHorizon: item.dynamicHorizon,
+                    isExpandable: item.isExpandable ?? true,
+                    hasDatasetToggle: item.hasDatasetToggle ?? true
+                };
+            });
+        } else if (Array.isArray(raw.c)) {
+            charts = raw.c.map(item => ({
                 id: item[0],
                 title: item[1],
                 domain: item[2] || domainName,
@@ -892,12 +1148,28 @@
                 dynamicHorizon: item[4] === 'dynamic' ? { enabled: true, dateColumnPattern: '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$' } : undefined,
                 isExpandable: true,
                 hasDatasetToggle: true
-            })),
-            datagrids: [{
-                id: "table-positions-matrix",
-                isExpandable: true,
-                domainNavigation: { enabled: true, defaultDomain: domainName }
-            }]
+            }));
+        }
+
+        let datagrids = raw.datagrids || [{ id: "table-positions-matrix", isExpandable: true }];
+        if (Array.isArray(datagrids)) {
+            datagrids = datagrids.map(dg => ({
+                ...dg,
+                id: dg.id || "table-positions-matrix",
+                title: dg.title || (domainName + " Matrix"),
+                isExpandable: dg.isExpandable ?? true
+            }));
+        }
+
+        return {
+            metadata: {
+                title: raw.metadata?.title || raw.t || raw.title || (domainName + " Dashboard"),
+                activeDomain: domainName
+            },
+            criteriaDeck: raw.criteriaDeck || {},
+            kpis: kpis.length > 0 ? kpis : undefined,
+            charts: charts.length > 0 ? charts : undefined,
+            datagrids: datagrids
         };
     }
 
@@ -923,19 +1195,16 @@
     function processIncomingPayloadGeneric(parsed, filename = "") {
         if (!parsed) return false;
 
-        // 1. Full Dashboard Specification
-        if (parsed.kpis || parsed.contractRegistry || parsed.$schema) {
+        if (parsed.kpis || parsed.charts || parsed.datagrids || parsed.$schema) {
             applyCompleteSpec(parsed);
             return true;
         }
 
-        // 2. Identify Target Domain dynamically
         const cleanName = filename.replace(/\.(data|json|contract)$/i, '').trim();
         const domain = parsed.metadata?.domain 
             || parsed.metadata?.templateId 
             || (cleanName && cleanName !== "data" && cleanName !== "" ? cleanName : currentDomain);
 
-        // 3. Contract Schema
         if (parsed.columns || parsed.exposedCriteria) {
             CONTRACT_REGISTRY[domain] = parsed;
             if (parsed.sampleData) {
@@ -957,7 +1226,6 @@
             return true;
         }
 
-        // 4. Data Records Array
         const rows = Array.isArray(parsed) ? parsed : (parsed.data || parsed.sampleData || []);
         if (rows.length > 0) {
             ACTIVE_PACKAGE_DATA[domain] = rows;
@@ -982,7 +1250,6 @@
 
     function loadSpecFromUrl() {
         let rawPayload = null;
-
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('spec')) {
             rawPayload = urlParams.get('spec');
@@ -1005,9 +1272,7 @@
 
             try {
                 let b64 = cleanPayload.replace(/-/g, '+').replace(/_/g, '/');
-                while (b64.length % 4 !== 0) {
-                    b64 += '=';
-                }
+                while (b64.length % 4 !== 0) b64 += '=';
                 jsonString = decodeURIComponent(escape(atob(b64)));
             } catch (e) {
                 jsonString = null;
@@ -1032,7 +1297,9 @@
 
             if (jsonString) {
                 const parsed = JSON.parse(jsonString);
-                applyCompleteSpec(parsed);
+                runAsyncWithLoader(() => {
+                    applyCompleteSpec(parsed);
+                }, 'Loading Initial Specification...');
             }
         } catch (err) {
             console.error("Failed to load specification from URL:", err);
@@ -1044,49 +1311,47 @@
         runtimeParser = new DashboardRuntimeParser({ isProductionMode: IS_PRODUCTION_MODE });
         loadSpecFromUrl();
 
-        // 1. File Upload Facility with automatic input clearing
+        // 1. File Upload Facility with Non-blocking Visual Spinner
         const fileInput = document.getElementById('devFileInput');
         if (fileInput) {
             fileInput.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files);
+                if (files.length === 0) return;
+
                 files.forEach(file => {
                     const reader = new FileReader();
                     reader.onload = (evt) => {
-                        try {
-                            // Extract text safely from the inner FileReader event (evt)
+                        runAsyncWithLoader(() => {
                             const rawText = evt.target.result || "";
-                            
-                            // Strip out the [<DATE>] wildcard object structure from arrays
                             const sanitizedText = String(rawText).replace(/,\s*"\[<DATE>\]"\s*:\s*"[^"]*"/g, '');
-                            
-                            // Parse the cleaned text, NOT the raw text
                             const parsed = JSON.parse(sanitizedText);
                             processIncomingPayloadGeneric(parsed, file.name);
-                        } catch (err) {
-                            console.error("Payload read error:", err);
-                        }
+                        }, `Hydrating ${file.name}...`);
                     };
                     reader.readAsText(file);
                 });
-                // Reset value so re-uploading the same file triggers change
                 e.target.value = '';
             });
         }
 
-        // 2. Paste AI Spec Facility
+        // 2. Paste AI Spec Facility with Non-blocking Visual Spinner
         const pasteBtn = document.getElementById('pasteSpecBtn');
         if (pasteBtn) {
             pasteBtn.addEventListener('click', async () => {
                 try {
                     const clipboardText = await navigator.clipboard.readText();
                     const parsed = JSON.parse(clipboardText);
-                    applyCompleteSpec(parsed);
+                    runAsyncWithLoader(() => {
+                        applyCompleteSpec(parsed);
+                    }, 'Compiling Dashboard Specification...');
                 } catch (err) {
                     const manualText = prompt("Paste your dashboard-spec.json specification here:");
                     if (manualText) {
                         try {
                             const parsed = JSON.parse(manualText);
-                            applyCompleteSpec(parsed);
+                            runAsyncWithLoader(() => {
+                                applyCompleteSpec(parsed);
+                            }, 'Compiling Dashboard Specification...');
                         } catch (e) {
                             alert("Invalid JSON format. Please ensure valid dashboard-spec.json structure.");
                         }
