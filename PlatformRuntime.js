@@ -721,7 +721,270 @@ window.addEventListener('message', (event) => {
 });
 
 // ============================================================================
-// 9. PUBLIC PLATFORM RUNTIME API EXPOSURE
+// 9. URL HASH SPECIFICATION DECOMPRESSION & HYDRATION ENGINE
+// ============================================================================
+
+/**
+ * Built-in standalone LZString URI decompressor fallback.
+ * Decodes URI-safe compressed payloads without requiring external CDN bundles.
+ */
+function decompressLZString(input) {
+    if (window.LZString && typeof window.LZString.decompressFromEncodedURIComponent === 'function') {
+        return window.LZString.decompressFromEncodedURIComponent(input);
+    }
+    if (input == null || input === '') return '';
+    input = input.replace(/ /g, '+');
+
+    const keyStrUriSafe = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+-$';
+    const baseReverseDic = {};
+    for (let i = 0; i < keyStrUriSafe.length; i++) {
+        baseReverseDic[keyStrUriSafe.charAt(i)] = i;
+    }
+
+    const getBaseValue = (index) => {
+        const char = input.charAt(index);
+        return baseReverseDic[char] !== undefined ? baseReverseDic[char] : 0;
+    };
+
+    const length = input.length;
+    const resetValue = 32;
+    const f = String.fromCharCode;
+    const dictionary = [0, 1, 2];
+    let next;
+    let enlargeIn = 4;
+    let dictSize = 4;
+    let numBits = 3;
+    let entry = '';
+    const result = [];
+    let w;
+    let bits;
+    let resb;
+    let maxpower;
+    let power;
+    let c;
+    const data = { val: getBaseValue(0), position: resetValue, index: 1 };
+
+    bits = 0; maxpower = Math.pow(2, 2); power = 1;
+    while (power !== maxpower) {
+        resb = data.val & data.position;
+        data.position >>= 1;
+        if (data.position === 0) {
+            data.position = resetValue;
+            data.val = getBaseValue(data.index++);
+        }
+        bits |= (resb > 0 ? 1 : 0) * power;
+        power <<= 1;
+    }
+
+    switch (next = bits) {
+        case 0:
+            bits = 0; maxpower = Math.pow(2, 8); power = 1;
+            while (power !== maxpower) {
+                resb = data.val & data.position;
+                data.position >>= 1;
+                if (data.position === 0) {
+                    data.position = resetValue;
+                    data.val = getBaseValue(data.index++);
+                }
+                bits |= (resb > 0 ? 1 : 0) * power;
+                power <<= 1;
+            }
+            c = f(bits);
+            break;
+        case 1:
+            bits = 0; maxpower = Math.pow(2, 16); power = 1;
+            while (power !== maxpower) {
+                resb = data.val & data.position;
+                data.position >>= 1;
+                if (data.position === 0) {
+                    data.position = resetValue;
+                    data.val = getBaseValue(data.index++);
+                }
+                bits |= (resb > 0 ? 1 : 0) * power;
+                power <<= 1;
+            }
+            c = f(bits);
+            break;
+        case 2:
+            return '';
+    }
+    dictionary[3] = c;
+    w = c;
+    result.push(c);
+
+    while (true) {
+        if (data.index > length) return '';
+
+        bits = 0; maxpower = Math.pow(2, numBits); power = 1;
+        while (power !== maxpower) {
+            resb = data.val & data.position;
+            data.position >>= 1;
+            if (data.position === 0) {
+                data.position = resetValue;
+                data.val = getBaseValue(data.index++);
+            }
+            bits |= (resb > 0 ? 1 : 0) * power;
+            power <<= 1;
+        }
+
+        switch (c = bits) {
+            case 0:
+                bits = 0; maxpower = Math.pow(2, 8); power = 1;
+                while (power !== maxpower) {
+                    resb = data.val & data.position;
+                    data.position >>= 1;
+                    if (data.position === 0) {
+                        data.position = resetValue;
+                        data.val = getBaseValue(data.index++);
+                    }
+                    bits |= (resb > 0 ? 1 : 0) * power;
+                    power <<= 1;
+                }
+                dictionary[dictSize++] = f(bits);
+                c = dictSize - 1;
+                enlargeIn--;
+                break;
+            case 1:
+                bits = 0; maxpower = Math.pow(2, 16); power = 1;
+                while (power !== maxpower) {
+                    resb = data.val & data.position;
+                    data.position >>= 1;
+                    if (data.position === 0) {
+                        data.position = resetValue;
+                        data.val = getBaseValue(data.index++);
+                    }
+                    bits |= (resb > 0 ? 1 : 0) * power;
+                    power <<= 1;
+                }
+                dictionary[dictSize++] = f(bits);
+                c = dictSize - 1;
+                enlargeIn--;
+                break;
+            case 2:
+                return result.join('');
+        }
+
+        if (enlargeIn === 0) {
+            enlargeIn = Math.pow(2, numBits);
+            numBits++;
+        }
+
+        if (dictionary[c]) {
+            entry = dictionary[c];
+        } else {
+            if (c === dictSize) {
+                entry = w + w.charAt(0);
+            } else {
+                return null;
+            }
+        }
+        result.push(entry);
+
+        dictionary[dictSize++] = w + entry.charAt(0);
+        enlargeIn--;
+
+        w = entry;
+
+        if (enlargeIn === 0) {
+            enlargeIn = Math.pow(2, numBits);
+            numBits++;
+        }
+    }
+}
+
+/**
+ * Parses either a compressed (#lz=) or URI-encoded (#spec=) JSON AST from the window location hash.
+ */
+function parseUrlHashSpec() {
+    const hash = window.location.hash;
+    if (!hash || hash.length < 5) return null;
+
+    try {
+        let spec = null;
+        if (hash.startsWith('#lz=')) {
+            const raw = hash.slice(4);
+            const jsonStr = decompressLZString(raw);
+            if (jsonStr) {
+                spec = JSON.parse(jsonStr);
+            }
+        } else if (hash.startsWith('#spec=')) {
+            const raw = decodeURIComponent(hash.slice(6));
+            spec = JSON.parse(raw);
+        }
+        return spec;
+    } catch (e) {
+        console.error('[PlatformRuntime] Error parsing specification from URL hash:', e);
+        return null;
+    }
+}
+
+/**
+ * Automates specification extraction and dispatches hydration to workspace.html.
+ */
+function initFromUrlHash() {
+    const spec = parseUrlHashSpec();
+    if (!spec) return null;
+
+    console.log(`[PlatformRuntime] Hydrating AST from URL Hash: ${spec.metadata?.dashboardId || spec.metadata?.title || 'custom'}`);
+
+    window.dashboardSpec = spec;
+    window.activeDashboardSpec = spec;
+
+    // 1. Invoke standard workspace runtime hydration callbacks if defined
+    if (typeof window.hydrateDashboard === 'function') {
+        window.hydrateDashboard(spec);
+    } else if (typeof window.renderDashboard === 'function') {
+        window.renderDashboard(spec);
+    } else if (typeof window.renderDashboardFromSpec === 'function') {
+        window.renderDashboardFromSpec(spec);
+    } else if (typeof window.loadDashboardSpec === 'function') {
+        window.loadDashboardSpec(spec);
+    } else if (typeof window.applyDashboardSpec === 'function') {
+        window.applyDashboardSpec(spec);
+    }
+
+    // 2. Broadcast custom events for decoupled UI frameworks
+    window.dispatchEvent(new CustomEvent('dashboard:spec-loaded', { detail: spec }));
+    window.dispatchEvent(new CustomEvent('calypso:load-spec', { detail: spec }));
+
+    // 3. Fallback: Prefill input/modal textarea and trigger submit if present in DOM
+    const specInput = document.getElementById('aiSpecInput') || 
+                      document.getElementById('specInput') || 
+                      document.querySelector('textarea.spec-input, textarea[data-spec-input]');
+    if (specInput) {
+        specInput.value = JSON.stringify(spec, null, 2);
+        specInput.dispatchEvent(new Event('input', { bubbles: true }));
+        specInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+        const applyBtn = document.getElementById('applySpecBtn') || 
+                         document.getElementById('btnApplySpec') || 
+                         document.getElementById('loadSpecBtn') ||
+                         document.querySelector('.apply-spec-btn, button[data-apply-spec]');
+        if (applyBtn && !applyBtn.disabled) {
+            applyBtn.click();
+        }
+    }
+
+    return spec;
+}
+
+// Auto-bootstrap from hash on DOM ready and on hashchange
+if (typeof window !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            initFromUrlHash();
+        });
+    } else {
+        initFromUrlHash();
+    }
+
+    window.addEventListener('hashchange', () => {
+        initFromUrlHash();
+    });
+}
+
+// ============================================================================
+// 10. PUBLIC PLATFORM RUNTIME API EXPOSURE
 // ============================================================================
 
 window.PlatformRuntime = {
@@ -734,5 +997,8 @@ window.PlatformRuntime = {
     bindModalEvents,
     formatSubtitleTimestamp,
     formatInputCriteriaDateMask,
-    formatIsoToDatetimeLocal
+    formatIsoToDatetimeLocal,
+    decompressLZString,
+    parseUrlHashSpec,
+    initFromUrlHash
 };
