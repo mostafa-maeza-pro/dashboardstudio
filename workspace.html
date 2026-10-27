@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
-    <!-- Native Host Runtime Mechanics -->
+    <!-- Native Host Runtime Mechanics (PlatformRuntime V2.0) -->
     <script src="https://mostafa-maeza-pro.github.io/dashboardstudio/PlatformRuntime.js"></script>
 </head>
 <body>
@@ -33,7 +33,7 @@
         <div class="header-left-section">
             <div class="header-title-block">
                 <h2 class="platform-title">📊 Calypso Dashboard Studio</h2>
-                <span class="platform-subtitle">AI-powered Dashboard Creation Platform</span>
+                <span class="platform-subtitle">Universal Financial Intelligence & Visualization Platform</span>
             </div>
         </div>
         
@@ -428,7 +428,7 @@
             (this.spec.charts || []).forEach(chartSpec => {
                 const chartId = chartSpec.id;
                 const domainRows = this.activeData[chartSpec.domain || this.currentDomain] || [];
-                const { labels, datasets, tableData } = this._buildChartDataModel(chartSpec, domainRows);
+                const { labels, datasets, seriesDataMap, tableData } = this._buildChartDataModel(chartSpec, domainRows);
 
                 const bodyHtml = '<div class="chart-panel-content chart-visual-panel" style="position: relative; height: 280px; width: 100%;">' +
                         '<canvas id="' + chartId + '"></canvas>' +
@@ -457,18 +457,27 @@
                 const canvas = document.getElementById(chartId);
                 if (canvas) {
                     const ctx = canvas.getContext('2d');
-                    const chartType = chartSpec.type === 'horizontalBar' ? 'bar' : (chartSpec.type || 'bar');
-                    const chartOpts = this._buildChartOptions(chartSpec);
+                    let chartConfig = null;
 
-                    if (chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y') {
-                        chartOpts.indexAxis = 'y';
+                    // Delegate to PlatformRuntime V2.0 Universal Engine if available
+                    if (window.PlatformRuntime && typeof window.PlatformRuntime.buildChartJsConfig === 'function') {
+                        chartConfig = window.PlatformRuntime.buildChartJsConfig(chartSpec, labels, seriesDataMap, ctx);
+                    } else {
+                        const chartType = chartSpec.type === 'horizontalBar' ? 'bar' : (chartSpec.type || 'bar');
+                        const chartOpts = this._buildChartOptions(chartSpec);
+
+                        if (chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y') {
+                            chartOpts.indexAxis = 'y';
+                        }
+
+                        chartConfig = {
+                            type: chartType,
+                            data: { labels, datasets },
+                            options: chartOpts
+                        };
                     }
 
-                    this.chartInstances[chartId] = new Chart(ctx, {
-                        type: chartType,
-                        data: { labels, datasets },
-                        options: chartOpts
-                    });
+                    this.chartInstances[chartId] = new Chart(ctx, chartConfig);
                 }
             });
         }
@@ -476,18 +485,24 @@
         _buildChartDataModel(chartSpec, rows) {
             const hasCategoryGrouping = Boolean(chartSpec.dimensions?.groupBy || chartSpec.categoryAxis);
 
-            // A. Dynamic Horizon Trend Chart
+            // A. Dynamic Horizon Trend Chart (Multi-date column matrices)
             if (chartSpec.dynamicHorizon?.enabled && !hasCategoryGrouping && rows.length > 0) {
                 const pattern = new RegExp(chartSpec.dynamicHorizon.dateColumnPattern || '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$|^\\d{4}-\\d{2}-\\d{2}$');
                 const dateHeaders = Object.keys(rows[0] || {}).filter(k => pattern.test(k));
 
                 const labels = dateHeaders.length > 0 ? dateHeaders : Object.keys(rows[0]).slice(-4);
                 const defaultLabel = chartSpec.title || (this.currentDomain + ' Total');
-                
-                const datasets = (chartSpec.series || [{ label: defaultLabel, color: '#38bdf8' }]).map(seriesCfg => {
+                const seriesList = (chartSpec.series && chartSpec.series.length > 0)
+                    ? chartSpec.series
+                    : [{ label: defaultLabel, field: '[<DATE>]', color: '#38bdf8' }];
+
+                const seriesDataMap = {};
+                const datasets = seriesList.map(seriesCfg => {
+                    const sField = seriesCfg.field || '[<DATE>]';
                     const dataPoints = labels.map(dateKey => {
                         return rows.reduce((acc, r) => acc + cleanNumber(r[dateKey]), 0);
                     });
+                    seriesDataMap[sField] = dataPoints;
 
                     return {
                         label: seriesCfg.label || defaultLabel,
@@ -495,7 +510,7 @@
                         data: dataPoints,
                         borderColor: seriesCfg.color || '#38bdf8',
                         backgroundColor: seriesCfg.type === 'line' ? 'transparent' : (seriesCfg.color || 'rgba(56, 189, 248, 0.4)'),
-                        yAxisID: seriesCfg.yAxisIndex ? ('y' + seriesCfg.yAxisIndex) : 'y',
+                        yAxisID: seriesCfg.yAxisID || (seriesCfg.yAxisIndex ? ('y' + seriesCfg.yAxisIndex) : 'y'),
                         tension: seriesCfg.tension ?? 0.2
                     };
                 });
@@ -504,6 +519,7 @@
                 return {
                     labels,
                     datasets,
+                    seriesDataMap,
                     tableData: {
                         headers: ['Horizon Date', ...datasets.map(d => d.label)],
                         rows: tableRows
@@ -511,50 +527,117 @@
                 };
             }
 
-            // B. Categorical Grouping (Distribution / Allocation by Dimension)
+            // B. Categorical Grouping (Dimensions & Multi-Metric Combinations)
             const groupField = chartSpec.dimensions?.groupBy || chartSpec.categoryAxis || Object.keys(rows[0] || {})[0] || "Category";
-            let metricField = this._resolveField(chartSpec.series?.[0]?.field || chartSpec.valueAxis, rows);
-            
-            if (!metricField && rows.length > 0) {
-                metricField = Object.keys(rows[0] || {})[1] || "Amount";
-            }
+            const seriesList = (chartSpec.series && chartSpec.series.length > 0)
+                ? chartSpec.series
+                : [{ field: chartSpec.valueAxis || Object.keys(rows[0] || {})[1] || "Amount", label: chartSpec.title || "Value" }];
 
-            const groups = {};
+            // Aggregate multiple series grouped by dimension
+            const groupAggregates = {};
             rows.forEach(r => {
-                const key = r[groupField] !== undefined && r[groupField] !== null ? String(r[groupField]) : "Other";
-                groups[key] = (groups[key] || 0) + cleanNumber(r[metricField]);
+                const rawKey = r[groupField];
+                const key = (rawKey !== undefined && rawKey !== null && String(rawKey).trim() !== '') ? String(rawKey) : "Other";
+                if (!groupAggregates[key]) {
+                    groupAggregates[key] = { _count: 0 };
+                    seriesList.forEach(s => {
+                        const resolvedF = this._resolveField(s.field, rows);
+                        groupAggregates[key][resolvedF] = 0;
+                    });
+                }
+                groupAggregates[key]._count += 1;
+                seriesList.forEach(s => {
+                    const resolvedF = this._resolveField(s.field, rows);
+                    groupAggregates[key][resolvedF] += cleanNumber(r[resolvedF]);
+                });
             });
 
-            let sortedKeys = Object.keys(groups).sort((a, b) => Math.abs(groups[b]) - Math.abs(groups[a]));
+            // Adjust averages for rates, strikes, yields, or moneyness metrics
+            seriesList.forEach(s => {
+                const resolvedF = this._resolveField(s.field, rows);
+                const isAvg = (s.aggregation === 'avg') || /strike|rate|yield|pct|percent|moneyness|delta %|iv|implied/i.test(resolvedF);
+                if (isAvg) {
+                    Object.keys(groupAggregates).forEach(k => {
+                        const count = groupAggregates[k]._count;
+                        if (count > 0) {
+                            groupAggregates[k][resolvedF] = groupAggregates[k][resolvedF] / count;
+                        }
+                    });
+                }
+            });
+
+            // Determine sort sequence: chronological if temporal dimension, else by primary metric magnitude
+            const primaryField = this._resolveField(seriesList[0].field, rows);
+            let sortedKeys = Object.keys(groupAggregates).sort((a, b) => {
+                const valA = Math.abs(groupAggregates[a][primaryField] || 0);
+                const valB = Math.abs(groupAggregates[b][primaryField] || 0);
+                return valB - valA;
+            });
+
+            if (/date|maturity|expiry|settle/i.test(groupField)) {
+                sortedKeys.sort((a, b) => {
+                    const timeA = new Date(a).getTime();
+                    const timeB = new Date(b).getTime();
+                    if (!isNaN(timeA) && !isNaN(timeB)) return timeA - timeB;
+                    return a.localeCompare(b);
+                });
+            }
+
             const topN = chartSpec.dimensions?.topN || chartSpec.topN;
             if (topN && sortedKeys.length > topN) {
                 const topKeys = sortedKeys.slice(0, topN);
                 if (chartSpec.dimensions?.otherBucket ?? chartSpec.otherBucket ?? true) {
-                    const otherVal = sortedKeys.slice(topN).reduce((sum, k) => sum + groups[k], 0);
-                    groups["Other"] = otherVal;
+                    const otherBucket = { _count: 0 };
+                    seriesList.forEach(s => {
+                        const resolvedF = this._resolveField(s.field, rows);
+                        const remainingSum = sortedKeys.slice(topN).reduce((sum, k) => sum + (groupAggregates[k][resolvedF] || 0), 0);
+                        const isAvg = (s.aggregation === 'avg') || /strike|rate|yield|pct|percent/i.test(resolvedF);
+                        otherBucket[resolvedF] = isAvg ? (remainingSum / Math.max(1, sortedKeys.length - topN)) : remainingSum;
+                    });
+                    groupAggregates["Other"] = otherBucket;
                     topKeys.push("Other");
                 }
                 sortedKeys = topKeys;
             }
 
             const labels = sortedKeys;
-            const palette = chartSpec.palette || ['#38bdf8', '#6366f1', '#34d399', '#f59e0b', '#f43f5e', '#94a3b8'];
-            const seriesLabel = chartSpec.series?.[0]?.label || chartSpec.title || metricField;
+            const seriesDataMap = {};
+            const datasets = [];
 
-            const datasets = [{
-                label: seriesLabel,
-                data: labels.map(l => groups[l]),
-                backgroundColor: palette.slice(0, labels.length),
-                borderColor: 'rgba(255,255,255,0.1)',
-                borderWidth: 1
-            }];
+            seriesList.forEach((s) => {
+                const resolvedF = this._resolveField(s.field, rows);
+                const dataArr = labels.map(l => groupAggregates[l] ? groupAggregates[l][resolvedF] : 0);
+                seriesDataMap[s.field] = dataArr;
+                if (resolvedF !== s.field) {
+                    seriesDataMap[resolvedF] = dataArr;
+                }
 
-            const tableRows = labels.map(l => [l, this._formatValue(groups[l], { style: 'currency' })]);
+                datasets.push({
+                    label: s.label || s.field || chartSpec.title,
+                    field: s.field,
+                    type: s.type,
+                    yAxisID: s.yAxisID || 'y',
+                    data: dataArr
+                });
+            });
+
+            const tableHeaders = [groupField, ...seriesList.map(s => s.label || s.field)];
+            const tableRows = labels.map(l => [
+                l,
+                ...seriesList.map(s => {
+                    const resolvedF = this._resolveField(s.field, rows);
+                    const val = groupAggregates[l] ? groupAggregates[l][resolvedF] : 0;
+                    const isRate = /strike|rate|yield|pct|percent|iv/i.test(resolvedF);
+                    return this._formatValue(val, { style: isRate ? 'number' : 'currency', decimals: isRate ? 4 : 2 });
+                })
+            ]);
+
             return {
                 labels,
                 datasets,
+                seriesDataMap,
                 tableData: {
-                    headers: [groupField, seriesLabel],
+                    headers: tableHeaders,
                     rows: tableRows
                 }
             };
@@ -658,7 +741,7 @@
 
             const domainSchema = gridConfig.domains?.[activeDom] || {
                 columns: normalizedCols.map(c => {
-                    const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(c.name) || /balance|amount|notional|npv|mtm|value/i.test(c.name);
+                    const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(c.name) || /balance|amount|notional|npv|mtm|value|vega|theta|delta/i.test(c.name);
                     
                     const defaultAgg = gridConfig.footerAggregates?.[c.name] 
                         || (isDateOrAmt ? (gridConfig.footerAggregates?.['[<DATE>]'] || 'SUM') : (c.name.toLowerCase().includes('client') || c.name.toLowerCase().includes('id') ? 'COUNT' : 'OFF'));
@@ -913,21 +996,10 @@
 
             // Expand / Zoom Click Delegation (Card-Isolated Resolution)
             document.addEventListener('click', (e) => {
-                const expandBtn = e.target.closest('.ui-chassis-expand-btn, .chassis-expand-btn, button[title*="Enlarge"], button[title*="Expand"], button[data-action="expand"]');
+                const expandBtn = e.target.closest('.ui-chassis-zoom-trigger, .ui-chassis-expand-btn, button[title*="Enlarge"], button[title*="Expand"]');
                 if (!expandBtn) return;
 
-                // Accurately resolve the immediate chassis card container
-                let chassis = expandBtn.closest('.ui-chassis, .ui-chassis-card, .chassis-card, .ui-chassis-container');
-                if (!chassis || chassis.tagName === 'SECTION' || chassis.classList.contains('dashboard-workspace')) {
-                    let curr = expandBtn;
-                    while (curr && curr.parentElement) {
-                        if (curr.parentElement.id && curr.parentElement.id.includes('-outlet')) {
-                            chassis = curr;
-                            break;
-                        }
-                        curr = curr.parentElement;
-                    }
-                }
+                let chassis = expandBtn.closest('.ui-proposal-chassis, .ui-chassis');
                 if (!chassis) return;
 
                 const modal = document.getElementById('ui-global-enlargement-modal');
@@ -937,21 +1009,18 @@
                 const viewSwitch = document.getElementById('modalViewSwitch');
                 if (!modal || !modalBody) return;
 
-                // Clean up previous modal chart instance if present
                 if (this.modalChartInstance) {
                     this.modalChartInstance.destroy();
                     this.modalChartInstance = null;
                 }
 
-                // Sync Title
-                const titleElem = chassis.querySelector('.ui-chassis-title, .chassis-title, h3, h4');
+                const titleElem = chassis.querySelector('.ui-chassis-title');
                 if (modalTitle && titleElem) {
                     modalTitle.textContent = titleElem.textContent.trim();
                 }
 
                 const canvas = chassis.querySelector('canvas');
                 if (canvas && this.chartInstances[canvas.id]) {
-                    // Zooming a Chart
                     if (viewSwitch) viewSwitch.style.display = 'inline-flex';
                     const origChart = this.chartInstances[canvas.id];
                     const dataPanel = chassis.querySelector('.chart-data-panel');
@@ -966,26 +1035,39 @@
                         </div>
                     `;
 
-                    // Reset switcher to visual view
                     document.querySelectorAll('#modalViewSwitch .chassis-switch-btn').forEach(b => {
                         b.classList.toggle('active', b.getAttribute('data-view') === 'visual');
                     });
 
-                    // Mount cloned Chart.js instance in the modal
                     const modalCanvas = document.getElementById('modal-enlarged-canvas');
                     if (modalCanvas && typeof Chart !== 'undefined') {
-                        this.modalChartInstance = new Chart(modalCanvas.getContext('2d'), {
-                            type: origChart.config.type,
-                            data: JSON.parse(JSON.stringify(origChart.config.data)),
+                        const modalCtx = modalCanvas.getContext('2d');
+                        const rawConfig = origChart.config;
+
+                        const modalDatasets = rawConfig.data.datasets.map(ds => {
+                            const cloned = { ...ds, data: ds.data ? [...ds.data] : [] };
+                            if (ds.type === 'line' && ds.fill && ds.borderColor && typeof ds.borderColor === 'string') {
+                                if (window.PlatformRuntime && typeof window.PlatformRuntime.createChartColorGradient === 'function') {
+                                    cloned.backgroundColor = window.PlatformRuntime.createChartColorGradient(modalCtx, ds.borderColor, 0.35, 0.01);
+                                }
+                            }
+                            return cloned;
+                        });
+
+                        this.modalChartInstance = new Chart(modalCtx, {
+                            type: rawConfig.type,
+                            data: {
+                                labels: rawConfig.data.labels ? [...rawConfig.data.labels] : [],
+                                datasets: modalDatasets
+                            },
                             options: {
-                                ...origChart.config.options,
+                                ...(rawConfig.options || {}),
                                 responsive: true,
                                 maintainAspectRatio: false
                             }
                         });
                     }
                 } else {
-                    // Zooming the DataGrid Matrix
                     if (viewSwitch) viewSwitch.style.display = 'none';
                     const gridConfig = this.spec?.datagrids?.[0] || { id: "table-positions-matrix" };
                     modalBody.innerHTML = this._generateDataGridMarkup(gridConfig);
@@ -1047,8 +1129,12 @@
 
         _formatValue(val, formatCfg = {}) {
             if (val === null || val === undefined || isNaN(val)) return '-';
-            const num = cleanNumber(val);
+            
+            if (window.PlatformRuntime && typeof window.PlatformRuntime.formatMetricValue === 'function') {
+                return window.PlatformRuntime.formatMetricValue(val, formatCfg);
+            }
 
+            const num = cleanNumber(val);
             if (formatCfg.style === 'currency') {
                 return new Intl.NumberFormat('en-US', {
                     style: 'currency',
@@ -1128,6 +1214,8 @@
                     domain: item.domain || domainName,
                     type: isHorizontal ? 'bar' : (item.type || 'bar'),
                     indexAxis: isHorizontal ? 'y' : 'x',
+                    stacked: item.stacked || false,
+                    scales: item.scales || undefined,
                     categoryAxis: groupField,
                     valueAxis: valField,
                     dimensions: item.dimensions || (groupField ? { groupBy: groupField, topN: item.topN || 6, otherBucket: item.otherBucket ?? true } : {}),
