@@ -138,6 +138,7 @@
     </main>
 
     <!-- GENERIC RUNTIME ENGINE -->
+    <!-- GENERIC RUNTIME ENGINE (ALIGNED WITH CALYPSO AST V1.0) -->
     <script>
     const IS_PRODUCTION_MODE = false;
 
@@ -147,7 +148,11 @@
     let runtimeParser = null;
     let CURRENT_SPEC = null;
 
-    // Async Non-Blocking Task Executor for Visual Responsiveness
+    const CHART_COLOR_PALETTE = [
+        '#38bdf8', '#818cf8', '#34d399', '#f43f5e', 
+        '#fbbf24', '#a855f7', '#fb923c', '#2dd4bf'
+    ];
+
     function setWorkspaceLoading(isLoading, message = 'Processing Dataset...') {
         const loader = document.getElementById('studioGlobalLoader');
         const msgElem = document.getElementById('studioLoaderMsg');
@@ -175,7 +180,6 @@
         });
     }
 
-    // Financial string to clean float parser
     function cleanNumber(val) {
         if (typeof val === 'number') return val;
         if (val === null || val === undefined) return 0;
@@ -223,10 +227,8 @@
             }
         }
 
-        // Dynamic Field Resolver for Wildcard Tokens ([LATEST_DATE], [<DATE>], [FIRST_DATE])
         _resolveField(field, rows = []) {
             if (!rows || rows.length === 0) return field;
-            
             const datePattern = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$|^\d{4}-\d{2}-\d{2}$/;
             const dateCols = Object.keys(rows[0]).filter(k => datePattern.test(k.trim()));
 
@@ -275,16 +277,9 @@
                 || (domainCfg.exposedCriteria || []).map(c => ({ id: 'param-' + c.name, label: c.name, field: c.name, type: c.type, defaultValue: c.defaultValue }));
 
             let html = '<div class="popover-primary-fields">' +
-                '<div class="popover-section-label">' +
-                    '<div class="popover-section-title-group">' +
-                        '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-                            '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
-                            '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
-                        '</svg>' +
-                        '<span>Input Parameters</span>' +
-                    '</div>' +
-                '</div>' +
-                '<div class="popover-primary-scrollbox">';
+                '<div class="popover-section-label"><div class="popover-section-title-group">' +
+                '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>' +
+                '<span>Input Parameters</span></div></div><div class="popover-primary-scrollbox">';
 
             if (inputParameters.length === 0) {
                 html += '<p style="font-size: 11px; opacity: 0.6; padding: 8px 0;">No adjustable parameters declared.</p>';
@@ -293,7 +288,6 @@
                     const activeVal = (!isInitial && this.activeCriteria.find(c => c.name === param.field))?.value 
                         ?? param.defaultValue 
                         ?? "";
-                    
                     const isDatetime = param.type === "Datetime";
                     const inputType = isDatetime ? "datetime-local" : "text";
                     const formattedVal = isDatetime && typeof formatIsoToDatetimeLocal === 'function'
@@ -303,7 +297,7 @@
                     html += '<div class="studio-form-group">' +
                         '<label class="studio-form-label" for="param-' + param.field + '">' + param.label + '</label>' +
                         '<input type="' + inputType + '" id="param-' + param.field + '" class="studio-form-input criteria-input-field" data-field="' + param.field + '" value="' + formattedVal + '">' +
-                    '</div>';
+                        '</div>';
                 });
             }
 
@@ -312,34 +306,26 @@
             const auditDomains = Object.keys(this.spec.criteriaDeck?.preDefinedAudits?.domains || CONTRACT_REGISTRY);
             if (auditDomains.length > 0) {
                 html += '<div class="popover-audit-context">' +
-                    '<div class="popover-section-label">' +
-                        '<div class="popover-section-title-group">' +
-                            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-                                '<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><line x1="12" y1="14" x2="12" y2="17"></line>' +
-                            '</svg>' +
-                            '<span>Pre-Defined Criterias</span>' +
-                        '</div>' +
-                        '<button type="button" class="popover-fold-btn is-collapsed" id="studioAuditFoldBtn" title="Toggle View">' +
-                            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
-                        '</button>' +
-                    '</div>' +
+                    '<div class="popover-section-label"><div class="popover-section-title-group">' +
+                    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><line x1="12" y1="14" x2="12" y2="17"></line></svg>' +
+                    '<span>Pre-Defined Criterias</span></div>' +
+                    '<button type="button" class="popover-fold-btn is-collapsed" id="studioAuditFoldBtn" title="Toggle View">' +
+                    '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>' +
+                    '</button></div>' +
                     '<div class="popover-audit-scrollbox is-collapsed" id="studioAuditScrollbox">' +
-                        '<div class="contract-cards-viewport" style="background: transparent !important;">' +
-                            '<div class="contract-cards-track" style="background: transparent !important;">';
+                    '<div class="contract-cards-viewport" style="background: transparent !important;"><div class="contract-cards-track" style="background: transparent !important;">';
 
                 auditDomains.forEach(domName => {
                     const items = this.spec.criteriaDeck?.preDefinedAudits?.domains?.[domName] 
-                        || (CONTRACT_REGISTRY[domName]?.presetCriteria || []).map(p => ({ label: p.name || p.label, fixedValue: p.fixedValue }));
+                        || (CONTRACT_REGISTRY[domName]?.presetCriteria || []).map(p => ({ label: p.name || p.label, fixedValue: p.value || p.fixedValue }));
 
                     html += '<div class="contract-card-slide" style="background: transparent !important; border: 1px solid rgba(148, 163, 184, 0.25) !important;">' +
                         '<div class="contract-card-header" style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.75;">' +
-                            '<span>' + domName + '</span>' +
-                            '<div class="card-slider-nav" style="display: inline-flex !important; flex-direction: row !important; align-items: center !important; gap: 4px !important;">' +
-                                '<button type="button" class="slider-prev-action" data-slide-dir="-1" title="Previous">&lt;</button>' +
-                                '<button type="button" class="slider-next-action" data-slide-dir="1" title="Next">&gt;</button>' +
-                            '</div>' +
-                        '</div>' +
-                        '<div class="contract-card-body" style="background: transparent !important;">';
+                        '<span>' + domName + '</span>' +
+                        '<div class="card-slider-nav" style="display: inline-flex !important; gap: 4px !important;">' +
+                        '<button type="button" class="slider-prev-action" data-slide-dir="-1" title="Previous">&lt;</button>' +
+                        '<button type="button" class="slider-next-action" data-slide-dir="1" title="Next">&gt;</button>' +
+                        '</div></div><div class="contract-card-body" style="background: transparent !important;">';
 
                     if (items.length === 0) {
                         html += '<p style="font-size: 11px; opacity: 0.6; padding: 4px 0;">No preset criteria locked.</p>';
@@ -347,11 +333,9 @@
                         items.forEach(crit => {
                             html += '<div class="studio-form-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">' +
                                 '<span class="studio-form-label" style="font-size: 12px;">' + crit.label + '</span>' +
-                                '<span class="criteria-read-only-tag">' + crit.fixedValue + '</span>' +
-                            '</div>';
+                                '<span class="criteria-read-only-tag">' + crit.fixedValue + '</span></div>';
                         });
                     }
-
                     html += '</div></div>';
                 });
 
@@ -396,7 +380,8 @@
             outlet.innerHTML = '';
 
             (this.spec.kpis || []).forEach(kpiSpec => {
-                const domainRows = this.activeData[kpiSpec.domain || this.currentDomain] || [];
+                const targetDomain = (kpiSpec.domain && this.activeData[kpiSpec.domain]) ? kpiSpec.domain : this.currentDomain;
+                const domainRows = this.activeData[targetDomain] || [];
                 const targetField = this._resolveField(kpiSpec.field, domainRows);
 
                 const rawVal = this._computeAggregation(domainRows, targetField, kpiSpec.aggregation, kpiSpec.weightField);
@@ -427,7 +412,8 @@
 
             (this.spec.charts || []).forEach(chartSpec => {
                 const chartId = chartSpec.id;
-                const domainRows = this.activeData[chartSpec.domain || this.currentDomain] || [];
+                const targetDomain = (chartSpec.domain && this.activeData[chartSpec.domain]) ? chartSpec.domain : this.currentDomain;
+                const domainRows = this.activeData[targetDomain] || [];
                 const { labels, datasets, seriesDataMap, tableData } = this._buildChartDataModel(chartSpec, domainRows);
 
                 const bodyHtml = '<div class="chart-panel-content chart-visual-panel" style="position: relative; height: 280px; width: 100%;">' +
@@ -459,16 +445,11 @@
                     const ctx = canvas.getContext('2d');
                     let chartConfig = null;
 
-                    // Delegate to PlatformRuntime V2.0 Universal Engine if available
                     if (window.PlatformRuntime && typeof window.PlatformRuntime.buildChartJsConfig === 'function') {
                         chartConfig = window.PlatformRuntime.buildChartJsConfig(chartSpec, labels, seriesDataMap, ctx);
                     } else {
                         const chartType = chartSpec.type === 'horizontalBar' ? 'bar' : (chartSpec.type || 'bar');
                         const chartOpts = this._buildChartOptions(chartSpec);
-
-                        if (chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y') {
-                            chartOpts.indexAxis = 'y';
-                        }
 
                         chartConfig = {
                             type: chartType,
@@ -485,7 +466,7 @@
         _buildChartDataModel(chartSpec, rows) {
             const hasCategoryGrouping = Boolean(chartSpec.dimensions?.groupBy || chartSpec.categoryAxis);
 
-            // A. Dynamic Horizon Trend Chart (Multi-date column matrices)
+            // A. Dynamic Horizon Trend Chart
             if (chartSpec.dynamicHorizon?.enabled && !hasCategoryGrouping && rows.length > 0) {
                 const pattern = new RegExp(chartSpec.dynamicHorizon.dateColumnPattern || '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$|^\\d{4}-\\d{2}-\\d{2}$');
                 const dateHeaders = Object.keys(rows[0] || {}).filter(k => pattern.test(k));
@@ -494,24 +475,22 @@
                 const defaultLabel = chartSpec.title || (this.currentDomain + ' Total');
                 const seriesList = (chartSpec.series && chartSpec.series.length > 0)
                     ? chartSpec.series
-                    : [{ label: defaultLabel, field: '[<DATE>]', color: '#38bdf8' }];
+                    : [{ label: defaultLabel, field: '[<DATE>]', color: CHART_COLOR_PALETTE[0] }];
 
                 const seriesDataMap = {};
-                const datasets = seriesList.map(seriesCfg => {
+                const datasets = seriesList.map((seriesCfg, sIdx) => {
                     const sField = seriesCfg.field || '[<DATE>]';
-                    const dataPoints = labels.map(dateKey => {
-                        return rows.reduce((acc, r) => acc + cleanNumber(r[dateKey]), 0);
-                    });
+                    const dataPoints = labels.map(dateKey => rows.reduce((acc, r) => acc + cleanNumber(r[dateKey]), 0));
                     seriesDataMap[sField] = dataPoints;
+                    const color = seriesCfg.color || CHART_COLOR_PALETTE[sIdx % CHART_COLOR_PALETTE.length];
 
                     return {
                         label: seriesCfg.label || defaultLabel,
                         type: seriesCfg.type || chartSpec.type || 'bar',
                         data: dataPoints,
-                        borderColor: seriesCfg.color || '#38bdf8',
-                        backgroundColor: seriesCfg.type === 'line' ? 'transparent' : (seriesCfg.color || 'rgba(56, 189, 248, 0.4)'),
-                        yAxisID: seriesCfg.yAxisID || (seriesCfg.yAxisIndex ? ('y' + seriesCfg.yAxisIndex) : 'y'),
-                        tension: seriesCfg.tension ?? 0.2
+                        borderColor: color,
+                        backgroundColor: seriesCfg.type === 'line' ? 'transparent' : color,
+                        tension: seriesCfg.tension ?? chartSpec.tension ?? 0.2
                     };
                 });
 
@@ -527,13 +506,64 @@
                 };
             }
 
-            // B. Categorical Grouping (Dimensions & Multi-Metric Combinations)
+            // B. Categorical Grouping (Dimensions & Multi-Metric / Stacked Pivots)
             const groupField = chartSpec.dimensions?.groupBy || chartSpec.categoryAxis || Object.keys(rows[0] || {})[0] || "Category";
+            const seriesField = chartSpec.seriesField;
+            const primaryMeasure = chartSpec.series?.[0]?.field || chartSpec.valueAxis || Object.keys(rows[0] || {})[1] || "Amount";
+
+            // Case B1: Dimensional Pivot (e.g., category: Put/Call, seriesField: Buy/Sell)
+            if (seriesField) {
+                const uniqueCats = Array.from(new Set(rows.map(r => String(r[groupField] ?? 'Other'))));
+                const uniqueSeries = Array.from(new Set(rows.map(r => String(r[seriesField] ?? 'Default'))));
+                const matrix = {};
+
+                uniqueCats.forEach(c => {
+                    matrix[c] = {};
+                    uniqueSeries.forEach(s => { matrix[c][s] = 0; });
+                });
+
+                rows.forEach(r => {
+                    const c = String(r[groupField] ?? 'Other');
+                    const s = String(r[seriesField] ?? 'Default');
+                    if (matrix[c] && matrix[c][s] !== undefined) {
+                        matrix[c][s] += cleanNumber(r[primaryMeasure]);
+                    }
+                });
+
+                const labels = uniqueCats;
+                const datasets = uniqueSeries.map((sKey, sIdx) => {
+                    const color = CHART_COLOR_PALETTE[sIdx % CHART_COLOR_PALETTE.length];
+                    return {
+                        label: sKey,
+                        data: labels.map(l => matrix[l][sKey]),
+                        backgroundColor: color,
+                        borderColor: color,
+                        stack: chartSpec.stacked ? 'stack-0' : undefined
+                    };
+                });
+
+                const seriesDataMap = {};
+                datasets.forEach(d => { seriesDataMap[d.label] = d.data; });
+
+                const tableHeaders = [groupField, ...uniqueSeries];
+                const tableRows = labels.map(l => [
+                    l,
+                    ...uniqueSeries.map(s => this._formatValue(matrix[l][s], { style: 'currency' }))
+                ]);
+
+                return {
+                    labels,
+                    datasets,
+                    seriesDataMap,
+                    tableData: { headers: tableHeaders, rows: tableRows }
+                };
+            }
+
+            // Case B2: Standard Metric Aggregation
             const seriesList = (chartSpec.series && chartSpec.series.length > 0)
                 ? chartSpec.series
-                : [{ field: chartSpec.valueAxis || Object.keys(rows[0] || {})[1] || "Amount", label: chartSpec.title || "Value" }];
+                : [{ field: primaryMeasure, label: chartSpec.title || "Value" }];
 
-            // Aggregate multiple series grouped by dimension
             const groupAggregates = {};
             rows.forEach(r => {
                 const rawKey = r[groupField];
@@ -552,32 +582,28 @@
                 });
             });
 
-            // Adjust averages for rates, strikes, yields, or moneyness metrics
+            // Average normalization for rate/ratio metrics
             seriesList.forEach(s => {
                 const resolvedF = this._resolveField(s.field, rows);
                 const isAvg = (s.aggregation === 'avg') || /strike|rate|yield|pct|percent|moneyness|delta %|iv|implied/i.test(resolvedF);
                 if (isAvg) {
                     Object.keys(groupAggregates).forEach(k => {
                         const count = groupAggregates[k]._count;
-                        if (count > 0) {
-                            groupAggregates[k][resolvedF] = groupAggregates[k][resolvedF] / count;
-                        }
+                        if (count > 0) groupAggregates[k][resolvedF] /= count;
                     });
                 }
             });
 
-            // Determine sort sequence: chronological if temporal dimension, else by primary metric magnitude
-            const primaryField = this._resolveField(seriesList[0].field, rows);
+            const resolvedPrimary = this._resolveField(seriesList[0].field, rows);
             let sortedKeys = Object.keys(groupAggregates).sort((a, b) => {
-                const valA = Math.abs(groupAggregates[a][primaryField] || 0);
-                const valB = Math.abs(groupAggregates[b][primaryField] || 0);
+                const valA = Math.abs(groupAggregates[a][resolvedPrimary] || 0);
+                const valB = Math.abs(groupAggregates[b][resolvedPrimary] || 0);
                 return valB - valA;
             });
 
             if (/date|maturity|expiry|settle/i.test(groupField)) {
                 sortedKeys.sort((a, b) => {
-                    const timeA = new Date(a).getTime();
-                    const timeB = new Date(b).getTime();
+                    const timeA = new Date(a).getTime(), timeB = new Date(b).getTime();
                     if (!isNaN(timeA) && !isNaN(timeB)) return timeA - timeB;
                     return a.localeCompare(b);
                 });
@@ -602,23 +628,24 @@
 
             const labels = sortedKeys;
             const seriesDataMap = {};
-            const datasets = [];
-
-            seriesList.forEach((s) => {
+            const datasets = seriesList.map((s, idx) => {
                 const resolvedF = this._resolveField(s.field, rows);
                 const dataArr = labels.map(l => groupAggregates[l] ? groupAggregates[l][resolvedF] : 0);
                 seriesDataMap[s.field] = dataArr;
-                if (resolvedF !== s.field) {
-                    seriesDataMap[resolvedF] = dataArr;
-                }
+                if (resolvedF !== s.field) seriesDataMap[resolvedF] = dataArr;
 
-                datasets.push({
+                const color = s.color || CHART_COLOR_PALETTE[idx % CHART_COLOR_PALETTE.length];
+                const chartType = s.type || chartSpec.type || 'bar';
+
+                return {
                     label: s.label || s.field || chartSpec.title,
-                    field: s.field,
-                    type: s.type,
-                    yAxisID: s.yAxisID || 'y',
-                    data: dataArr
-                });
+                    type: chartType,
+                    data: dataArr,
+                    borderColor: color,
+                    backgroundColor: chartType === 'line' ? 'transparent' : color,
+                    fill: chartSpec.fill ?? false,
+                    tension: chartSpec.tension ?? 0.2
+                };
             });
 
             const tableHeaders = [groupField, ...seriesList.map(s => s.label || s.field)];
@@ -636,19 +663,18 @@
                 labels,
                 datasets,
                 seriesDataMap,
-                tableData: {
-                    headers: tableHeaders,
-                    rows: tableRows
-                }
+                tableData: { headers: tableHeaders, rows: tableRows }
             };
         }
 
         _buildChartOptions(chartSpec) {
             const isHorizontal = chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y';
+            const isStacked = Boolean(chartSpec.stacked);
 
             return {
                 responsive: true,
                 maintainAspectRatio: false,
+                indexAxis: isHorizontal ? 'y' : 'x',
                 plugins: {
                     legend: {
                         position: 'bottom',
@@ -657,10 +683,12 @@
                 },
                 scales: chartSpec.type === 'doughnut' ? {} : {
                     x: {
+                        stacked: isStacked,
                         grid: { color: isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
                         ticks: isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
                     },
                     y: {
+                        stacked: isStacked,
                         grid: { color: !isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
                         ticks: !isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
                     }
@@ -724,8 +752,7 @@
             } else if (this.activeData[activeDom]?.[0]) {
                 normalizedCols = Object.keys(this.activeData[activeDom][0]).map(k => ({ name: k }));
             }
-            
-            // Expand [<DATE>] wildcard into concrete sampleData horizon dates
+
             const expandedCols = [];
             const datePattern = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$|^\d{4}-\d{2}-\d{2}$/;
             normalizedCols.forEach(c => {
@@ -742,7 +769,6 @@
             const domainSchema = gridConfig.domains?.[activeDom] || {
                 columns: normalizedCols.map(c => {
                     const isDateOrAmt = /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(c.name) || /balance|amount|notional|npv|mtm|value|vega|theta|delta/i.test(c.name);
-                    
                     const defaultAgg = gridConfig.footerAggregates?.[c.name] 
                         || (isDateOrAmt ? (gridConfig.footerAggregates?.['[<DATE>]'] || 'SUM') : (c.name.toLowerCase().includes('client') || c.name.toLowerCase().includes('id') ? 'COUNT' : 'OFF'));
                     
@@ -785,8 +811,8 @@
             }
 
             const toolbarHtml = '<div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(125,125,125,0.03); border-bottom: 1px solid rgba(125,125,125,0.12); font-size: 12px; position: sticky; top: 0; z-index: 12; backdrop-filter: blur(8px);">' +
-                '<span class="fx-table-count-badge" id="fx-table-count-badge" style="font-size: 0.78rem; color: inherit; opacity: 0.7; font-weight: 500;">' + rows.length + ' records</span>' +
-                '<div class="filter-box" style="position: relative;">' +
+                '<span class="fx-table-count-badge" style="font-size: 0.78rem; opacity: 0.7; font-weight: 500;">' + rows.length + ' records</span>' +
+                '<div class="filter-box">' +
                     '<input type="text" class="fx-table-filter" placeholder="Search..." value="' + domState.searchTerm + '" style="padding: 3px 8px; font-size: 11px; border-radius: 4px; border: 1px solid rgba(125,125,125,0.25); background: transparent; color: inherit;">' +
                 '</div>' +
             '</div>';
@@ -796,11 +822,9 @@
                 cols.map(col => {
                     const isSorted = domState.sortKey === col.key;
                     const icon = !isSorted ? '⇅' : (domState.sortDir === 1 ? '▲' : '▼');
-                    const iconOpacity = isSorted ? '1' : '0.4';
                     const colorStyle = isSorted ? 'color: #38bdf8;' : 'color: inherit;';
                     return '<th data-sort="' + col.key + '" style="background: rgba(125,125,125,0.06); ' + colorStyle + ' border-bottom: 1px solid rgba(125,125,125,0.2); cursor: pointer; padding: 6px 10px; font-size: 11px; text-align: left; user-select: none;">' +
-                        col.label + ' <span class="sort-icon" style="opacity: ' + iconOpacity + '; font-size: 10px;">' + icon + '</span>' +
-                    '</th>';
+                        col.label + ' <span class="sort-icon" style="opacity: ' + (isSorted ? '1' : '0.4') + '; font-size: 10px;">' + icon + '</span></th>';
                 }).join('') +
             '</tr></thead>';
 
@@ -823,7 +847,7 @@
                     return '<td style="background: rgba(125,125,125,0.06); border-top: 1px solid rgba(125,125,125,0.2); padding: 4px 6px;">' +
                         '<div class="agg-cell-container" style="display: flex; align-items: center;">' +
                             '<button type="button" class="agg-result-pill" data-key="' + col.key + '" style="background: rgba(125,125,125,0.08); border: none; font-weight: 700; color: inherit; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer;">' +
-                                (aggFunc === 'OFF' ? '<span style="opacity: 0.35; font-family: monospace;">-</span>' : aggVal) +
+                                (aggFunc === 'OFF' ? '<span style="opacity: 0.35;">-</span>' : aggVal) +
                             '</button>' +
                             '<select class="agg-col-select" data-key="' + col.key + '" style="display: none; font-size: 10px; padding: 1px 3px; border-radius: 3px; background: ' + selectBg + '; color: ' + selectColor + '; border: 1px solid #38bdf8;">' +
                                 '<option value="OFF" ' + (aggFunc === 'OFF' ? 'selected' : '') + '>OFF</option>' +
@@ -831,8 +855,7 @@
                                 '<option value="AVG" ' + (aggFunc === 'AVG' ? 'selected' : '') + '>AVG</option>' +
                                 '<option value="COUNT" ' + (aggFunc === 'COUNT' ? 'selected' : '') + '>COUNT</option>' +
                             '</select>' +
-                        '</div>' +
-                    '</td>';
+                        '</div></td>';
                 }).join('') +
             '</tr></tfoot>';
 
@@ -840,9 +863,7 @@
                 '<div class="chart-dataset-table-box" style="overflow: auto; width: 100%; min-height: 520px; max-height: 600px; border: 1px solid rgba(125,125,125,0.12); border-radius: 6px;">' +
                     toolbarHtml +
                     '<table class="studio-data-table" style="width: 100%; border-collapse: collapse;">' +
-                        theadHtml +
-                        tbodyHtml +
-                        tfootHtml +
+                        theadHtml + tbodyHtml + tfootHtml +
                     '</table>' +
                 '</div>';
         }
@@ -874,15 +895,10 @@
             document.addEventListener('click', (e) => {
                 const th = e.target.closest('th[data-sort]');
                 if (!th) return;
-
                 const colKey = th.getAttribute('data-sort');
                 const state = this._getDomainState(this.currentDomain);
-                if (state.sortKey === colKey) {
-                    state.sortDir = state.sortDir === 1 ? -1 : 1;
-                } else {
-                    state.sortKey = colKey;
-                    state.sortDir = 1;
-                }
+                state.sortDir = (state.sortKey === colKey) ? state.sortDir * -1 : 1;
+                state.sortKey = colKey;
                 this._hydrateDataGrid();
             });
 
@@ -892,7 +908,6 @@
                 const state = this._getDomainState(this.currentDomain);
                 state.searchTerm = term;
                 this._hydrateDataGrid();
-
                 document.querySelectorAll('.fx-table-filter').forEach(inp => {
                     if (inp !== document.activeElement) inp.value = term;
                 });
@@ -928,10 +943,8 @@
             document.addEventListener('change', (e) => {
                 if (!e.target.classList.contains('agg-col-select')) return;
                 const colKey = e.target.getAttribute('data-key');
-                const func = e.target.value;
                 const state = this._getDomainState(this.currentDomain);
-                state.aggregates[colKey] = func;
-
+                state.aggregates[colKey] = e.target.value;
                 e.target.style.display = 'none';
                 e.target.parentElement.querySelector('.agg-result-pill').style.display = 'inline-block';
                 this._hydrateDataGrid();
@@ -979,7 +992,6 @@
                 };
             }
 
-            // --- MODAL ZOOM / ENLARGEMENT HANDLERS ---
             const closeModal = () => {
                 const modal = document.getElementById('ui-global-enlargement-modal');
                 const bd = document.getElementById('studioPopoverBackdrop');
@@ -994,12 +1006,11 @@
             const modalCloseBtn = document.getElementById('ui-modal-close-btn');
             if (modalCloseBtn) modalCloseBtn.onclick = closeModal;
 
-            // Expand / Zoom Click Delegation (Card-Isolated Resolution)
             document.addEventListener('click', (e) => {
                 const expandBtn = e.target.closest('.ui-chassis-zoom-trigger, .ui-chassis-expand-btn, button[title*="Enlarge"], button[title*="Expand"]');
                 if (!expandBtn) return;
 
-                let chassis = expandBtn.closest('.ui-proposal-chassis, .ui-chassis');
+                const chassis = expandBtn.closest('.ui-proposal-chassis, .ui-chassis');
                 if (!chassis) return;
 
                 const modal = document.getElementById('ui-global-enlargement-modal');
@@ -1044,21 +1055,11 @@
                         const modalCtx = modalCanvas.getContext('2d');
                         const rawConfig = origChart.config;
 
-                        const modalDatasets = rawConfig.data.datasets.map(ds => {
-                            const cloned = { ...ds, data: ds.data ? [...ds.data] : [] };
-                            if (ds.type === 'line' && ds.fill && ds.borderColor && typeof ds.borderColor === 'string') {
-                                if (window.PlatformRuntime && typeof window.PlatformRuntime.createChartColorGradient === 'function') {
-                                    cloned.backgroundColor = window.PlatformRuntime.createChartColorGradient(modalCtx, ds.borderColor, 0.35, 0.01);
-                                }
-                            }
-                            return cloned;
-                        });
-
                         this.modalChartInstance = new Chart(modalCtx, {
                             type: rawConfig.type,
                             data: {
                                 labels: rawConfig.data.labels ? [...rawConfig.data.labels] : [],
-                                datasets: modalDatasets
+                                datasets: rawConfig.data.datasets.map(ds => ({ ...ds, data: [...ds.data] }))
                             },
                             options: {
                                 ...(rawConfig.options || {}),
@@ -1077,7 +1078,6 @@
                 if (bd) bd.classList.add('is-active', 'active');
             });
 
-            // View Switcher Delegation (Visual Chart vs Supporting Dataset)
             document.addEventListener('click', (e) => {
                 const switchBtn = e.target.closest('#modalViewSwitch .chassis-switch-btn');
                 if (!switchBtn) return;
@@ -1165,69 +1165,68 @@
 
     window.DashboardRuntimeParser = DashboardRuntimeParser;
 
-    // Tolerant Normalization Adapter for Any AST Variation
+    // AST NORMALIZATION ADAPTER
     function normalizeSpec(raw) {
         if (!raw) return null;
         
-        // Dynamically resolve active domain based on available metadata handles
-        const domainName = raw.d 
-            || raw.metadata?.activeDomain 
-            || raw.metadata?.domain 
+        const domainName = raw.metadata?.domain 
             || raw.metadata?.templateId 
+            || raw.d 
             || Object.keys(raw.contractRegistry || {})[0] 
             || "default";
 
-        // Assign raw arrays directly under the active domain namespace mapping
-        if (raw.s && Array.isArray(raw.s) && raw.s.length > 0) {
-            ACTIVE_PACKAGE_DATA[domainName] = raw.s;
-        } else if (raw.sampleData && Array.isArray(raw.sampleData) && raw.sampleData.length > 0) {
+        // Register contract & sample data from spec.contract
+        if (raw.contract) {
+            CONTRACT_REGISTRY[domainName] = raw.contract;
+            if (raw.contract.sampleData && Array.isArray(raw.contract.sampleData)) {
+                ACTIVE_PACKAGE_DATA[domainName] = raw.contract.sampleData;
+            }
+        } else if (raw.sampleData && Array.isArray(raw.sampleData)) {
             ACTIVE_PACKAGE_DATA[domainName] = raw.sampleData;
         }
 
+        // Normalize KPIs (AST: title, metric, aggregation)
         let kpis = [];
         if (Array.isArray(raw.kpis)) {
-            kpis = raw.kpis.map((item, idx) => ({
-                id: item.id || ('kpi-' + idx),
-                label: item.label || item.title || item.metric || 'Metric',
-                field: item.field || item.metric,
-                aggregation: item.aggregation || 'sum',
-                format: typeof item.format === 'string' 
-                    ? { style: item.format.includes('curr') ? 'currency' : (item.format.includes('pct') ? 'percent' : 'number'), currency: 'USD' } 
-                    : (item.format || { style: 'currency', currency: 'USD' }),
-                domain: item.domain || domainName,
-                subtext: item.subtext || '',
-                dynamicHorizon: item.dynamicHorizon
-            }));
-        } else if (Array.isArray(raw.k)) {
-            kpis = raw.k.map((item, idx) => ({
-                id: 'kpi-' + idx,
-                label: item[0],
-                domain: item[1] || domainName,
-                field: item[2],
-                aggregation: item[3],
-                format: { style: item[4] === 'curr' ? 'currency' : (item[4] === 'pct' ? 'percent' : 'number') },
-                subtext: item[5] || '',
-                weightField: item[6] || null
-            }));
+            kpis = raw.kpis.map((item, idx) => {
+                const metricName = item.metric || item.field || 'Metric';
+                const isRate = /strike|rate|yield|pct|percent|iv|delta %/i.test(metricName);
+                const isCount = item.aggregation === 'count' || /count|deals|trades|id/i.test(metricName);
+
+                return {
+                    id: item.id || ('kpi-' + idx),
+                    label: item.title || item.label || metricName,
+                    field: metricName,
+                    aggregation: item.aggregation || 'sum',
+                    format: item.format || { 
+                        style: isRate ? 'percent' : (isCount ? 'number' : 'currency'), 
+                        currency: 'USD' 
+                    },
+                    domain: item.domain || null,
+                    subtext: item.subtext || ''
+                };
+            });
         }
 
+        // Normalize Charts (AST: categoryField, measureField, seriesField, stacked, indexAxis)
         let charts = [];
         if (Array.isArray(raw.charts)) {
             charts = raw.charts.map((item, idx) => {
                 const isHorizontal = item.type === 'horizontalBar' || item.indexAxis === 'y';
-                const groupField = item.dimensions?.groupBy || item.categoryAxis || item.dimension;
-                const valField = item.series?.[0]?.field || item.valueAxis || item.metric;
+                const groupField = item.categoryField || item.categoryAxis || item.dimensions?.groupBy || item.dimension;
+                const valField = item.measureField || item.metric || item.series?.[0]?.field || item.valueAxis;
 
                 return {
                     id: item.id || ('chart-' + idx),
                     title: item.title,
-                    domain: item.domain || domainName,
+                    domain: item.domain || null,
                     type: isHorizontal ? 'bar' : (item.type || 'bar'),
                     indexAxis: isHorizontal ? 'y' : 'x',
                     stacked: item.stacked || false,
                     scales: item.scales || undefined,
                     categoryAxis: groupField,
                     valueAxis: valField,
+                    seriesField: item.seriesField,
                     dimensions: item.dimensions || (groupField ? { groupBy: groupField, topN: item.topN || 6, otherBucket: item.otherBucket ?? true } : {}),
                     series: item.series || (valField ? [{ field: valField, label: item.title }] : [{ label: item.title }]),
                     dynamicHorizon: item.dynamicHorizon,
@@ -1235,34 +1234,27 @@
                     hasDatasetToggle: item.hasDatasetToggle ?? true
                 };
             });
-        } else if (Array.isArray(raw.c)) {
-            charts = raw.c.map(item => ({
-                id: item[0],
-                title: item[1],
-                domain: item[2] || domainName,
-                type: item[3],
-                dimensions: item[4] && item[4] !== 'dynamic' ? { groupBy: item[4] } : {},
-                series: item[5] ? [{ field: item[5], aggregation: 'sum', label: item[1] }] : [{ type: 'bar', label: item[1] }],
-                dynamicHorizon: item[4] === 'dynamic' ? { enabled: true, dateColumnPattern: '^\\d{2}-[A-Za-z]{3}-\\d{2,4}$' } : undefined,
-                isExpandable: true,
-                hasDatasetToggle: true
-            }));
         }
 
-        let datagrids = raw.datagrids || [{ id: "table-positions-matrix", isExpandable: true }];
-        if (Array.isArray(datagrids)) {
-            datagrids = datagrids.map(dg => ({
-                ...dg,
-                id: dg.id || "table-positions-matrix",
-                title: dg.title || (domainName + " Matrix"),
-                isExpandable: dg.isExpandable ?? true
-            }));
+        // Bridge root grid to datagrids
+        let datagrids = raw.datagrids || [];
+        if (datagrids.length === 0 && raw.grid) {
+            datagrids = [{
+                id: "table-positions-matrix",
+                title: (domainName + " Matrix"),
+                isExpandable: true,
+                defaultSort: raw.grid.defaultSort,
+                footerAggregates: raw.grid.footerAggregates
+            }];
+        } else if (datagrids.length === 0) {
+            datagrids = [{ id: "table-positions-matrix", title: (domainName + " Matrix"), isExpandable: true }];
         }
 
         return {
             metadata: {
-                title: raw.metadata?.title || raw.t || raw.title || (domainName + " Dashboard"),
-                activeDomain: domainName
+                title: raw.metadata?.title || (domainName + " Dashboard"),
+                activeDomain: domainName,
+                archetype: raw.metadata?.archetype || "Archetype B"
             },
             criteriaDeck: raw.criteriaDeck || {},
             kpis: kpis.length > 0 ? kpis : undefined,
@@ -1274,28 +1266,21 @@
     function applyCompleteSpec(specObject) {
         if (!specObject) return;
 
-        if (specObject.contractRegistry) {
-            Object.assign(CONTRACT_REGISTRY, specObject.contractRegistry);
-        }
-
-        const domainName = specObject.d 
-            || specObject.metadata?.activeDomain 
-            || specObject.metadata?.domain 
+        const domainName = specObject.metadata?.domain 
             || specObject.metadata?.templateId 
-            || Object.keys(specObject.contractRegistry || {})[0] 
+            || specObject.d 
             || "default";
 
-        const incomingData = specObject.sampleData || specObject.sampleDataPackage;
-        if (incomingData) {
-            if (Array.isArray(incomingData)) {
-                // Directly assign the raw contract array under the active domain namespace mapping
-                ACTIVE_PACKAGE_DATA[domainName] = incomingData;
-            } else {
-                Object.assign(ACTIVE_PACKAGE_DATA, incomingData);
+        if (specObject.contract) {
+            CONTRACT_REGISTRY[domainName] = specObject.contract;
+            if (specObject.contract.sampleData) {
+                ACTIVE_PACKAGE_DATA[domainName] = specObject.contract.sampleData;
             }
         }
 
         CURRENT_SPEC = normalizeSpec(specObject);
+        currentDomain = domainName;
+
         if (runtimeParser) {
             runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
         }
@@ -1304,7 +1289,8 @@
     function processIncomingPayloadGeneric(parsed, filename = "") {
         if (!parsed) return false;
 
-        if (parsed.kpis || parsed.charts || parsed.datagrids || parsed.$schema) {
+        // If uploading a complete AST spec
+        if (parsed.kpis || parsed.charts || parsed.grid || parsed.datagrids) {
             applyCompleteSpec(parsed);
             return true;
         }
@@ -1322,12 +1308,6 @@
             currentDomain = domain;
             if (CURRENT_SPEC && CURRENT_SPEC.metadata) {
                 CURRENT_SPEC.metadata.activeDomain = domain;
-            } else {
-                CURRENT_SPEC = normalizeSpec({
-                    d: domain,
-                    t: domain + " Dashboard",
-                    s: ACTIVE_PACKAGE_DATA[domain] || []
-                });
             }
             if (runtimeParser) {
                 runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
@@ -1341,12 +1321,6 @@
             currentDomain = domain;
             if (CURRENT_SPEC && CURRENT_SPEC.metadata) {
                 CURRENT_SPEC.metadata.activeDomain = domain;
-            } else {
-                CURRENT_SPEC = normalizeSpec({
-                    d: domain,
-                    t: domain + " Dashboard",
-                    s: rows
-                });
             }
             if (runtimeParser) {
                 runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
@@ -1415,12 +1389,10 @@
         }
     }
 
-    // Platform Bootstrap Lifecycle
     window.addEventListener('DOMContentLoaded', () => {
         runtimeParser = new DashboardRuntimeParser({ isProductionMode: IS_PRODUCTION_MODE });
         loadSpecFromUrl();
 
-        // 1. File Upload Facility with Non-blocking Visual Spinner
         const fileInput = document.getElementById('devFileInput');
         if (fileInput) {
             fileInput.addEventListener('change', (e) => {
@@ -1443,7 +1415,6 @@
             });
         }
 
-        // 2. Paste AI Spec Facility with Non-blocking Visual Spinner
         const pasteBtn = document.getElementById('pasteSpecBtn');
         if (pasteBtn) {
             pasteBtn.addEventListener('click', async () => {
