@@ -1168,10 +1168,20 @@
     // Tolerant Normalization Adapter for Any AST Variation
     function normalizeSpec(raw) {
         if (!raw) return null;
-        const domainName = raw.d || raw.metadata?.activeDomain || Object.keys(raw.contractRegistry || {})[0] || "default";
+        
+        // Dynamically resolve active domain based on available metadata handles
+        const domainName = raw.d 
+            || raw.metadata?.activeDomain 
+            || raw.metadata?.domain 
+            || raw.metadata?.templateId 
+            || Object.keys(raw.contractRegistry || {})[0] 
+            || "default";
 
+        // Assign raw arrays directly under the active domain namespace mapping
         if (raw.s && Array.isArray(raw.s) && raw.s.length > 0) {
             ACTIVE_PACKAGE_DATA[domainName] = raw.s;
+        } else if (raw.sampleData && Array.isArray(raw.sampleData) && raw.sampleData.length > 0) {
+            ACTIVE_PACKAGE_DATA[domainName] = raw.sampleData;
         }
 
         let kpis = [];
@@ -1268,10 +1278,21 @@
             Object.assign(CONTRACT_REGISTRY, specObject.contractRegistry);
         }
 
-        if (specObject.sampleData) {
-            Object.assign(ACTIVE_PACKAGE_DATA, specObject.sampleData);
-        } else if (specObject.sampleDataPackage) {
-            Object.assign(ACTIVE_PACKAGE_DATA, specObject.sampleDataPackage);
+        const domainName = specObject.d 
+            || specObject.metadata?.activeDomain 
+            || specObject.metadata?.domain 
+            || specObject.metadata?.templateId 
+            || Object.keys(specObject.contractRegistry || {})[0] 
+            || "default";
+
+        const incomingData = specObject.sampleData || specObject.sampleDataPackage;
+        if (incomingData) {
+            if (Array.isArray(incomingData)) {
+                // Directly assign the raw contract array under the active domain namespace mapping
+                ACTIVE_PACKAGE_DATA[domainName] = incomingData;
+            } else {
+                Object.assign(ACTIVE_PACKAGE_DATA, incomingData);
+            }
         }
 
         CURRENT_SPEC = normalizeSpec(specObject);
