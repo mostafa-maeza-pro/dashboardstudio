@@ -893,27 +893,39 @@ function decompressLZString(input) {
 }
 
 /**
- * Parses either a compressed (#lz=) or URI-encoded (#spec=) JSON AST from the window location hash.
+ * Universal Specification Extractor:
+ * Supports query parameters (?spec=, ?lz=) and hash fragments (#spec=, #lz=).
+ * Query parameters take precedence to survive Google Redirect Notices and outbound link proxies.
  */
 function parseUrlHashSpec() {
-    const hash = window.location.hash;
-    if (!hash || hash.length < 5) return null;
-
     try {
-        let spec = null;
-        if (hash.startsWith('#lz=')) {
-            const raw = hash.slice(4);
-            const jsonStr = decompressLZString(raw);
-            if (jsonStr) {
-                spec = JSON.parse(jsonStr);
-            }
-        } else if (hash.startsWith('#spec=')) {
-            const raw = decodeURIComponent(hash.slice(6));
-            spec = JSON.parse(raw);
+        // 1. Inspect URL Query Parameters (?spec= or ?lz=)
+        const searchParams = new URLSearchParams(window.location.search);
+        if (searchParams.has('lz')) {
+            const jsonStr = decompressLZString(searchParams.get('lz'));
+            if (jsonStr) return JSON.parse(jsonStr);
         }
-        return spec;
+        if (searchParams.has('spec')) {
+            const raw = searchParams.get('spec');
+            return JSON.parse(decodeURIComponent(raw));
+        }
+
+        // 2. Fallback to URL Hash Fragments (#lz= or #spec=)
+        const hash = window.location.hash;
+        if (hash && hash.length >= 5) {
+            if (hash.startsWith('#lz=')) {
+                const raw = hash.slice(4);
+                const jsonStr = decompressLZString(raw);
+                if (jsonStr) return JSON.parse(jsonStr);
+            } else if (hash.startsWith('#spec=')) {
+                const raw = decodeURIComponent(hash.slice(6));
+                return JSON.parse(raw);
+            }
+        }
+
+        return null;
     } catch (e) {
-        console.error('[PlatformRuntime] Error parsing specification from URL hash:', e);
+        console.error('[PlatformRuntime] Error parsing specification from URL (search/hash):', e);
         return null;
     }
 }
