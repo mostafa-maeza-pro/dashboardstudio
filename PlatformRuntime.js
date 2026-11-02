@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V2.03
+ * PlatformRuntime.js V2.04
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
  */
@@ -32,15 +32,15 @@ function getPlatformThemeTokens() {
         gridColor: isLight ? 'rgba(226, 232, 240, 0.8)' : 'rgba(51, 65, 85, 0.4)',
         borderColor: isLight ? '#cbd5e1' : '#334155',
         palette: [
-            '#3b82f6', // Sapphire Blue
-            '#10b981', // Emerald Green
-            '#f59e0b', // Amber
-            '#8b5cf6', // Violet
-            '#ec4899', // Pink / Magenta
-            '#06b6d4', // Cyan
-            '#f97316', // Orange
-            '#14b8a6', // Teal
-            '#6366f1'  // Indigo
+            '#38bdf8', // Sky Blue
+            '#818cf8', // Indigo
+            '#34d399', // Emerald
+            '#f43f5e', // Rose
+            '#fbbf24', // Amber
+            '#a855f7', // Purple
+            '#fb923c', // Orange
+            '#2dd4bf', // Teal
+            '#60a5fa'  // Blue
         ]
     };
 }
@@ -139,15 +139,120 @@ function formatInputCriteriaDateMask(dateStr) {
 
 function formatIsoToDatetimeLocal(dateStr) {
     if (!dateStr) return '';
-    const cleanStr = String(dateStr).replace(/\//g, '-');
+    const cleanStr = String(dateStr).trim().replace(/\//g, '-');
     const d = new Date(cleanStr);
-    if (isNaN(d.getTime())) return '';
+    if (isNaN(d.getTime())) {
+        const fallbackMatch = cleanStr.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})/);
+        return fallbackMatch ? `${fallbackMatch[1]}T${fallbackMatch[2]}` : '';
+    }
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // ============================================================================
-// 3. ADVANCED GENERIC CHART.JS SPECIFICATION FACTORY
+// 3. MULTI-CONTRACT CRITERIA DECK HARMONIZATION UTILITIES
+// ============================================================================
+
+function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
+    const paramMap = new Map();
+
+    const registerParam = (p) => {
+        if (!p) return;
+        const fieldKey = (p.field || p.name || p.id || '').trim();
+        if (!fieldKey) return;
+        const canonicalKey = fieldKey.toLowerCase();
+
+        const widgetType = p.widget || (
+            p.type === 'Datetime' ? 'datetime-local' :
+            p.type === 'Date' ? 'date' :
+            p.type === 'Number' ? 'number' :
+            (p.options && Array.isArray(p.options)) ? 'select' : 'text'
+        );
+
+        if (!paramMap.has(canonicalKey)) {
+            paramMap.set(canonicalKey, {
+                id: p.id || `param-${fieldKey}`,
+                field: fieldKey,
+                label: p.label || fieldKey.replace(/_/g, ' '),
+                type: p.type || 'String',
+                widget: widgetType,
+                defaultValue: p.defaultValue ?? p.value ?? '',
+                options: p.options || undefined,
+                required: Boolean(p.required)
+            });
+        } else {
+            const existing = paramMap.get(canonicalKey);
+            if (!existing.options && p.options) existing.options = p.options;
+            if (!existing.defaultValue && (p.defaultValue || p.value)) {
+                existing.defaultValue = p.defaultValue ?? p.value;
+            }
+        }
+    };
+
+    if (Array.isArray(explicitParams)) {
+        explicitParams.forEach(registerParam);
+    }
+
+    Object.values(contractRegistry || {}).forEach(contract => {
+        if (!contract) return;
+        const exposed = contract.exposedCriteria || contract.parameters || contract.inputParameters || [];
+        if (Array.isArray(exposed)) {
+            exposed.forEach(item => {
+                registerParam({
+                    field: item.name || item.field,
+                    label: item.label || item.name,
+                    type: item.type,
+                    defaultValue: item.defaultValue ?? item.value,
+                    options: item.options
+                });
+            });
+        }
+    });
+
+    return Array.from(paramMap.values());
+}
+
+function extractPreDefinedAudits(explicitAudits = {}, contractRegistry = {}) {
+    const domainsMap = {};
+
+    if (explicitAudits && explicitAudits.domains && typeof explicitAudits.domains === 'object') {
+        Object.keys(explicitAudits.domains).forEach(dom => {
+            domainsMap[dom] = Array.isArray(explicitAudits.domains[dom]) 
+                ? [...explicitAudits.domains[dom]] 
+                : [];
+        });
+    }
+
+    Object.keys(contractRegistry || {}).forEach(domName => {
+        if (domName === 'default') return;
+        const contract = contractRegistry[domName];
+        if (!contract) return;
+
+        if (!domainsMap[domName]) {
+            domainsMap[domName] = [];
+        }
+
+        const presets = contract.presetCriteria || contract.preDefinedParameters || contract.lockedFilters || [];
+        if (Array.isArray(presets)) {
+            presets.forEach(p => {
+                const name = p.name || p.field || p.label;
+                const exists = domainsMap[domName].some(existing => (existing.name || existing.label) === name);
+                if (!exists) {
+                    domainsMap[domName].push({
+                        name: name,
+                        label: p.label || name,
+                        fixedValue: p.fixedValue ?? p.value ?? '-'
+                    });
+                }
+            });
+        }
+    });
+
+    return domainsMap;
+}
+
+// ============================================================================
+// 4. ADVANCED GENERIC CHART.JS SPECIFICATION FACTORY
 // ============================================================================
 
 function createChartColorGradient(ctx, hexColor, alphaTop = 0.35, alphaBottom = 0.0) {
@@ -171,9 +276,6 @@ function hexToRgba(hex, alpha = 1) {
     return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
-/**
- * Builds Chart.js config supporting single metrics, combo/dual scales, and dimensional pivots
- */
 function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, prebuiltDatasets = null) {
     const tokens = getPlatformThemeTokens();
     const isCombo = chartSpec.type === 'combo';
@@ -184,7 +286,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, 
     let finalLabels = labels;
     let finalSeriesDataMap = seriesDataMap || {};
 
-    // Auto-resolve when raw dataset rows are passed directly
     if (Array.isArray(labels) && labels.length > 0 && typeof labels[0] === 'object' && !Array.isArray(labels[0])) {
         const dataset = labels;
         const dimensionKey = chartSpec.dimension || chartSpec.groupBy;
@@ -202,7 +303,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, 
         });
     }
 
-    // 1. Dataset Resolution: Prioritize prebuilt matrix datasets from dimensional pivots
     let datasets = [];
     if (Array.isArray(prebuiltDatasets) && prebuiltDatasets.length > 0 && chartSpec.seriesField) {
         datasets = prebuiltDatasets.map((ds, idx) => {
@@ -219,7 +319,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, 
             };
         });
     } else {
-        // Fallback: If chartSpec.series doesn't match seriesDataMap keys, derive dynamically
         let seriesList = chartSpec.series || [];
         const dataKeys = Object.keys(finalSeriesDataMap);
         const hasMatchingKey = seriesList.some(s => (s.metric || s.field) in finalSeriesDataMap);
@@ -279,7 +378,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, 
         });
     }
 
-    // 2. Build Universal Scaled Axes
     const scales = {};
     if (!isRadial) {
         const categoryAxisKey = isHorizontal ? 'y' : 'x';
@@ -407,7 +505,7 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, 
 }
 
 // ============================================================================
-// 4. UI CHASSIS COMPILATION FACTORY
+// 5. UI CHASSIS COMPILATION FACTORY
 // ============================================================================
 
 function createChassisComponent(titleText, bodyHTMLContent, isExpandable = false, componentId = "", isCollapsible = false, hasDatasetToggle = false) { 
@@ -445,7 +543,7 @@ function createChassisComponent(titleText, bodyHTMLContent, isExpandable = false
 }
 
 // ============================================================================
-// 5. CHART INTERACTIVE EVENTS (TOOLTIPS & VIEW TOGGLING)
+// 6. CHART INTERACTIVE EVENTS (TOOLTIPS & VIEW TOGGLING)
 // ============================================================================
 
 function bindChartInteractiveEvents() { 
@@ -513,7 +611,7 @@ function bindChartInteractiveEvents() {
 }
 
 // ============================================================================
-// 6. MODAL ZOOM, DRAG & ADVANCED CHART RECONSTRUCTION ENGINE
+// 7. MODAL ZOOM, DRAG & ADVANCED CHART RECONSTRUCTION ENGINE
 // ============================================================================
 
 let activeModalChartInstance = null;
@@ -712,7 +810,7 @@ function bindModalEvents(getChartInstanceFn) {
 }
 
 // ============================================================================
-// 7. GLOBAL HEADER & THEME INTERACTION ENGINE
+// 8. GLOBAL HEADER & THEME INTERACTION ENGINE
 // ============================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -738,10 +836,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 });
-
-// ============================================================================
-// 8. GLOBAL IFRAME & THEME CONTROL API
-// ============================================================================
 
 window.setDashboardTheme = function(mode = 'toggle') {
     let isLight;
@@ -1015,23 +1109,6 @@ function initFromUrlHash() {
     window.dispatchEvent(new CustomEvent('dashboard:spec-loaded', { detail: spec }));
     window.dispatchEvent(new CustomEvent('calypso:load-spec', { detail: spec }));
 
-    const specInput = document.getElementById('aiSpecInput') || 
-                      document.getElementById('specInput') || 
-                      document.querySelector('textarea.spec-input, textarea[data-spec-input]');
-    if (specInput) {
-        specInput.value = JSON.stringify(spec, null, 2);
-        specInput.dispatchEvent(new Event('input', { bubbles: true }));
-        specInput.dispatchEvent(new Event('change', { bubbles: true }));
-
-        const applyBtn = document.getElementById('applySpecBtn') || 
-                         document.getElementById('btnApplySpec') || 
-                         document.getElementById('loadSpecBtn') ||
-                         document.querySelector('.apply-spec-btn, button[data-apply-spec]');
-        if (applyBtn && !applyBtn.disabled) {
-            applyBtn.click();
-        }
-    }
-
     return spec;
 }
 
@@ -1081,6 +1158,8 @@ window.PlatformRuntime = {
     formatSubtitleTimestamp,
     formatInputCriteriaDateMask,
     formatIsoToDatetimeLocal,
+    mergeCriteriaParameters,
+    extractPreDefinedAudits,
     decompressLZString,
     parseUrlHashSpec,
     initFromUrlHash
