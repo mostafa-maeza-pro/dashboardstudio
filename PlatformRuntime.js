@@ -1,14 +1,7 @@
 /**
- * PlatformRuntime.js V2.02
+ * PlatformRuntime.js V2.03
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
- *
- * Core Capabilities:
- * - 100% Generic & Domain-Agnostic: Works seamlessly across Ledgers, Trades, Balances, Cash Flows & Risk
- * - Chart.js Advanced Engine: Combo charts, dual-scale axes (y / y1), stacked horizons, gradient area fills, bezier smoothing
- * - Context-Aware Formatting: Automatic unit scaling ($M, $B, %, bps), dark/light theme reactive tokens
- * - Interactive Chassis & Modals: Drag, resize, smooth view toggling (Visual vs Dataset), and 1.2x zoomed modal recreation
- * - Canonical Dataset Identity: Unified resolution across templateId, domain, and packageId
  */
 
 // ============================================================================
@@ -27,7 +20,6 @@ function extractInitials(name) {
 function resolveDatasetKey(metadata) {
     if (!metadata) return 'default';
     if (typeof metadata === 'string') return metadata;
-    // In Calypso, templateId represents the concrete report blotter; packageId/domain is the grouping namespace
     return metadata.templateId || metadata.domain || metadata.packageId || 'default';
 }
 
@@ -179,7 +171,10 @@ function hexToRgba(hex, alpha = 1) {
     return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
-function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) {
+/**
+ * Builds Chart.js config supporting single metrics, combo/dual scales, and dimensional pivots
+ */
+function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null, prebuiltDatasets = null) {
     const tokens = getPlatformThemeTokens();
     const isCombo = chartSpec.type === 'combo';
     const rootType = isCombo ? 'bar' : (chartSpec.type || 'bar');
@@ -189,6 +184,7 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
     let finalLabels = labels;
     let finalSeriesDataMap = seriesDataMap || {};
 
+    // Auto-resolve when raw dataset rows are passed directly
     if (Array.isArray(labels) && labels.length > 0 && typeof labels[0] === 'object' && !Array.isArray(labels[0])) {
         const dataset = labels;
         const dimensionKey = chartSpec.dimension || chartSpec.groupBy;
@@ -206,50 +202,84 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
         });
     }
 
-    const datasets = (chartSpec.series || []).map((s, idx) => {
-        const baseColor = s.color || tokens.palette[idx % tokens.palette.length];
-        const seriesType = s.type || (isCombo ? 'bar' : rootType);
-        const yAxisID = s.yAxisID || 'y';
-        const isLine = seriesType === 'line';
+    // 1. Dataset Resolution: Prioritize prebuilt matrix datasets from dimensional pivots
+    let datasets = [];
+    if (Array.isArray(prebuiltDatasets) && prebuiltDatasets.length > 0 && chartSpec.seriesField) {
+        datasets = prebuiltDatasets.map((ds, idx) => {
+            const baseColor = ds.backgroundColor || tokens.palette[idx % tokens.palette.length];
+            return {
+                type: ds.type || rootType,
+                label: ds.label || `Series ${idx + 1}`,
+                data: ds.data || [],
+                backgroundColor: hexToRgba(baseColor, 0.85),
+                borderColor: baseColor,
+                borderWidth: 1,
+                borderRadius: (!isRadial) ? 4 : 0,
+                stack: chartSpec.stacked ? 'stack-0' : undefined
+            };
+        });
+    } else {
+        // Fallback: If chartSpec.series doesn't match seriesDataMap keys, derive dynamically
+        let seriesList = chartSpec.series || [];
+        const dataKeys = Object.keys(finalSeriesDataMap);
+        const hasMatchingKey = seriesList.some(s => (s.metric || s.field) in finalSeriesDataMap);
 
-        let backgroundColor;
-        if (isRadial) {
-            backgroundColor = tokens.palette.slice(0, (finalLabels || []).length);
-        } else if (isLine && s.fill) {
-            backgroundColor = canvasCtx ? createChartColorGradient(canvasCtx, baseColor, 0.3, 0.01) : hexToRgba(baseColor, 0.2);
-        } else if (isLine) {
-            backgroundColor = baseColor;
-        } else {
-            backgroundColor = hexToRgba(baseColor, 0.85);
+        if ((!hasMatchingKey || seriesList.length === 0) && dataKeys.length > 0) {
+            seriesList = dataKeys.map((k, kIdx) => ({
+                field: k,
+                metric: k,
+                label: k,
+                color: tokens.palette[kIdx % tokens.palette.length]
+            }));
         }
 
-        const metricKey = s.metric || s.field;
-        const dataVals = finalSeriesDataMap ? (
-            finalSeriesDataMap[metricKey] ??
-            finalSeriesDataMap[s.field] ??
-            finalSeriesDataMap[s.metric] ??
-            (s.label && finalSeriesDataMap[s.label]) ??
-            []
-        ) : [];
+        datasets = seriesList.map((s, idx) => {
+            const baseColor = s.color || tokens.palette[idx % tokens.palette.length];
+            const seriesType = s.type || (isCombo ? 'bar' : rootType);
+            const yAxisID = s.yAxisID || 'y';
+            const isLine = seriesType === 'line';
 
-        return {
-            type: seriesType,
-            label: s.label || metricKey || s.field || s.metric || `Series ${idx + 1}`,
-            data: dataVals,
-            yAxisID: isRadial ? undefined : yAxisID,
-            backgroundColor: backgroundColor,
-            borderColor: isRadial ? (tokens.isLight ? '#ffffff' : '#1e293b') : baseColor,
-            borderWidth: isLine ? (s.borderWidth || 2.5) : 1,
-            borderRadius: (!isLine && !isRadial) ? (s.borderRadius ?? 4) : 0,
-            fill: s.fill ?? (isLine ? false : undefined),
-            tension: s.tension ?? (isLine ? 0.3 : 0),
-            pointRadius: isLine ? (s.pointRadius ?? 3) : 0,
-            pointHoverRadius: isLine ? 6 : 0,
-            pointBackgroundColor: baseColor,
-            borderDash: s.borderDash || undefined
-        };
-    });
+            let backgroundColor;
+            if (isRadial) {
+                backgroundColor = tokens.palette.slice(0, (finalLabels || []).length);
+            } else if (isLine && s.fill) {
+                backgroundColor = canvasCtx ? createChartColorGradient(canvasCtx, baseColor, 0.3, 0.01) : hexToRgba(baseColor, 0.2);
+            } else if (isLine) {
+                backgroundColor = baseColor;
+            } else {
+                backgroundColor = hexToRgba(baseColor, 0.85);
+            }
 
+            const metricKey = s.metric || s.field;
+            const dataVals = finalSeriesDataMap ? (
+                finalSeriesDataMap[metricKey] ??
+                finalSeriesDataMap[s.field] ??
+                finalSeriesDataMap[s.metric] ??
+                (s.label && finalSeriesDataMap[s.label]) ??
+                []
+            ) : [];
+
+            return {
+                type: seriesType,
+                label: s.label || metricKey || s.field || s.metric || `Series ${idx + 1}`,
+                data: dataVals,
+                yAxisID: isRadial ? undefined : yAxisID,
+                backgroundColor: backgroundColor,
+                borderColor: isRadial ? (tokens.isLight ? '#ffffff' : '#1e293b') : baseColor,
+                borderWidth: isLine ? (s.borderWidth || 2.5) : 1,
+                borderRadius: (!isLine && !isRadial) ? (s.borderRadius ?? 4) : 0,
+                fill: s.fill ?? (isLine ? false : undefined),
+                tension: s.tension ?? (isLine ? 0.3 : 0),
+                pointRadius: isLine ? (s.pointRadius ?? 3) : 0,
+                pointHoverRadius: isLine ? 6 : 0,
+                pointBackgroundColor: baseColor,
+                borderDash: s.borderDash || undefined,
+                stack: chartSpec.stacked ? 'stack-0' : undefined
+            };
+        });
+    }
+
+    // 2. Build Universal Scaled Axes
     const scales = {};
     if (!isRadial) {
         const categoryAxisKey = isHorizontal ? 'y' : 'x';
@@ -339,7 +369,7 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
             },
             plugins: {
                 legend: {
-                    display: isRadial || (chartSpec.series && chartSpec.series.length > 1),
+                    display: isRadial || (datasets.length > 1),
                     position: 'top',
                     labels: {
                         color: tokens.textColor,
