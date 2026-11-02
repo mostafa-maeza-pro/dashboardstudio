@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V2.0
+ * PlatformRuntime.js V2.01
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
  *
@@ -174,8 +174,29 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
     const isRadial = rootType === 'doughnut' || rootType === 'pie' || rootType === 'polarArea' || rootType === 'radar';
     const isHorizontal = chartSpec.indexAxis === 'y';
 
+    // Auto-resolve when raw dataset rows are passed directly or seriesDataMap is omitted
+    let finalLabels = labels;
+    let finalSeriesDataMap = seriesDataMap || {};
+
+    if (Array.isArray(labels) && labels.length > 0 && typeof labels[0] === 'object' && !Array.isArray(labels[0])) {
+        const dataset = labels;
+        const dimensionKey = chartSpec.dimension || chartSpec.groupBy;
+        finalLabels = [...new Set(dataset.map(row => row[dimensionKey]))].filter(v => v !== undefined && v !== null);
+        finalSeriesDataMap = {};
+        (chartSpec.series || []).forEach(s => {
+            const mKey = s.metric || s.field;
+            finalSeriesDataMap[mKey] = finalLabels.map(label => {
+                const matched = dataset.filter(r => r[dimensionKey] === label);
+                const vals = matched.map(r => Number(r[mKey]) || 0);
+                if (s.aggregation === 'avg') return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                if (s.aggregation === 'count') return vals.length;
+                return vals.reduce((a, b) => a + b, 0);
+            });
+        });
+    }
+
     // 1. Build Datasets
-    const datasets = chartSpec.series.map((s, idx) => {
+    const datasets = (chartSpec.series || []).map((s, idx) => {
         const baseColor = s.color || tokens.palette[idx % tokens.palette.length];
         const seriesType = s.type || (isCombo ? 'bar' : rootType);
         const yAxisID = s.yAxisID || 'y';
@@ -183,7 +204,7 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
 
         let backgroundColor;
         if (isRadial) {
-            backgroundColor = tokens.palette.slice(0, labels.length);
+            backgroundColor = tokens.palette.slice(0, (finalLabels || []).length);
         } else if (isLine && s.fill) {
             backgroundColor = canvasCtx ? createChartColorGradient(canvasCtx, baseColor, 0.3, 0.01) : hexToRgba(baseColor, 0.2);
         } else if (isLine) {
@@ -192,10 +213,19 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
             backgroundColor = hexToRgba(baseColor, 0.85);
         }
 
+        const metricKey = s.metric || s.field;
+        const dataVals = finalSeriesDataMap ? (
+            finalSeriesDataMap[metricKey] ??
+            finalSeriesDataMap[s.field] ??
+            finalSeriesDataMap[s.metric] ??
+            (s.label && finalSeriesDataMap[s.label]) ??
+            []
+        ) : [];
+
         return {
             type: seriesType,
-            label: s.label || s.field,
-            data: seriesDataMap[s.field] || [],
+            label: s.label || metricKey || s.field || s.metric || `Series ${idx + 1}`,
+            data: dataVals,
             yAxisID: isRadial ? undefined : yAxisID,
             backgroundColor: backgroundColor,
             borderColor: isRadial ? (tokens.isLight ? '#ffffff' : '#1e293b') : baseColor,
@@ -228,51 +258,61 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
             }
         };
 
-        const primaryScaleDef = chartSpec.scales?.[primaryValAxisKey] || {};
+        const rawPrimaryScale = chartSpec.scales?.[primaryValAxisKey];
+        const primaryScaleDef = (typeof rawPrimaryScale === 'object' && rawPrimaryScale !== null) ? rawPrimaryScale : {};
         scales[primaryValAxisKey] = {
             position: primaryScaleDef.position || (isHorizontal ? 'bottom' : 'left'),
             stacked: chartSpec.stacked || false,
             grid: {
                 color: tokens.gridColor,
-                drawBorder: false
+                drawBorder: false,
+                ...(typeof primaryScaleDef.grid === 'object' ? primaryScaleDef.grid : {})
             },
             ticks: {
                 color: tokens.textMuted,
                 font: { size: 11, family: 'Inter, system-ui, sans-serif' },
                 callback: function(value) {
                     return formatMetricValue(value, primaryScaleDef.format || { compact: true });
-                }
+                },
+                ...(typeof primaryScaleDef.ticks === 'object' ? primaryScaleDef.ticks : {})
             },
             title: primaryScaleDef.title ? {
                 display: true,
-                text: primaryScaleDef.title,
+                text: typeof primaryScaleDef.title === 'string' ? primaryScaleDef.title : primaryScaleDef.title.text,
                 color: tokens.textMuted,
-                font: { size: 11, weight: '500' }
+                font: { size: 11, weight: '500' },
+                ...(typeof primaryScaleDef.title === 'object' ? primaryScaleDef.title : {})
             } : undefined
         };
 
         // Dual Axis Support (y1 or x1)
         const secondaryValAxisKey = isHorizontal ? 'x1' : 'y1';
         if (chartSpec.scales?.[secondaryValAxisKey]) {
-            const secondaryScaleDef = chartSpec.scales[secondaryValAxisKey];
+            const rawSecondaryScale = chartSpec.scales[secondaryValAxisKey];
+            const secondaryScaleDef = (typeof rawSecondaryScale === 'object' && rawSecondaryScale !== null) ? rawSecondaryScale : {};
             scales[secondaryValAxisKey] = {
                 position: secondaryScaleDef.position || (isHorizontal ? 'top' : 'right'),
                 grid: {
-                    drawOnChartArea: secondaryScaleDef.grid ?? false,
-                    color: tokens.gridColor
+                    drawOnChartArea: typeof secondaryScaleDef.grid === 'boolean'
+                        ? secondaryScaleDef.grid
+                        : (secondaryScaleDef.grid?.drawOnChartArea ?? false),
+                    color: tokens.gridColor,
+                    ...(typeof secondaryScaleDef.grid === 'object' ? secondaryScaleDef.grid : {})
                 },
                 ticks: {
                     color: tokens.textMuted,
                     font: { size: 11, family: 'Inter, system-ui, sans-serif' },
                     callback: function(value) {
                         return formatMetricValue(value, secondaryScaleDef.format || { compact: true });
-                    }
+                    },
+                    ...(typeof secondaryScaleDef.ticks === 'object' ? secondaryScaleDef.ticks : {})
                 },
                 title: secondaryScaleDef.title ? {
                     display: true,
-                    text: secondaryScaleDef.title,
+                    text: typeof secondaryScaleDef.title === 'string' ? secondaryScaleDef.title : secondaryScaleDef.title.text,
                     color: tokens.textMuted,
-                    font: { size: 11, weight: '500' }
+                    font: { size: 11, weight: '500' },
+                    ...(typeof secondaryScaleDef.title === 'object' ? secondaryScaleDef.title : {})
                 } : undefined
             };
         }
@@ -281,7 +321,7 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
     // 3. Assemble Options & Intelligent Interaction Tooltips
     return {
         type: rootType,
-        data: { labels, datasets },
+        data: { labels: finalLabels, datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -292,7 +332,7 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
             },
             plugins: {
                 legend: {
-                    display: isRadial || chartSpec.series.length > 1,
+                    display: isRadial || (chartSpec.series && chartSpec.series.length > 1),
                     position: 'top',
                     labels: {
                         color: tokens.textColor,
@@ -316,7 +356,8 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
                             const dataset = context.dataset;
                             const val = context.parsed[isHorizontal ? 'x' : 'y'] ?? context.parsed;
                             const yAxisID = dataset.yAxisID || 'y';
-                            const scaleDef = chartSpec.scales?.[yAxisID] || {};
+                            const rawScale = chartSpec.scales?.[yAxisID];
+                            const scaleDef = (typeof rawScale === 'object' && rawScale !== null) ? rawScale : {};
                             const formatted = formatMetricValue(val, scaleDef.format);
                             return ` ${dataset.label || ''}: ${formatted}`;
                         }
@@ -941,6 +982,9 @@ function initFromUrlHash() {
 
     window.dashboardSpec = spec;
     window.activeDashboardSpec = spec;
+    if (spec.contract?.sampleData) {
+        window.activeDataset = spec.contract.sampleData;
+    }
 
     // 1. Invoke standard workspace runtime hydration callbacks if defined
     if (typeof window.hydrateDashboard === 'function') {
@@ -979,6 +1023,23 @@ function initFromUrlHash() {
 
     return spec;
 }
+
+// Global contract upload listener to synchronize dataset across file-drops and upload modals
+window.addEventListener('contract:uploaded', (e) => {
+    if (!e.detail) return;
+    const records = e.detail.sampleData || e.detail.data || (Array.isArray(e.detail) ? e.detail : []);
+    if (records.length && window.dashboardSpec) {
+        window.activeDataset = records;
+        window.dashboardSpec.contract = window.dashboardSpec.contract || {};
+        window.dashboardSpec.contract.sampleData = records;
+        if (typeof window.hydrateDashboard === 'function') {
+            window.hydrateDashboard(window.dashboardSpec);
+        } else if (typeof window.renderDashboard === 'function') {
+            window.renderDashboard(window.dashboardSpec);
+        }
+        window.dispatchEvent(new CustomEvent('dashboard:data-updated', { detail: records }));
+    }
+});
 
 // Auto-bootstrap from hash on DOM ready and on hashchange
 if (typeof window !== 'undefined') {
