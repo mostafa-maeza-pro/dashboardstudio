@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V2.01
+ * PlatformRuntime.js V2.02
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
  *
@@ -8,6 +8,7 @@
  * - Chart.js Advanced Engine: Combo charts, dual-scale axes (y / y1), stacked horizons, gradient area fills, bezier smoothing
  * - Context-Aware Formatting: Automatic unit scaling ($M, $B, %, bps), dark/light theme reactive tokens
  * - Interactive Chassis & Modals: Drag, resize, smooth view toggling (Visual vs Dataset), and 1.2x zoomed modal recreation
+ * - Canonical Dataset Identity: Unified resolution across templateId, domain, and packageId
  */
 
 // ============================================================================
@@ -21,6 +22,13 @@ function initializeThemeDefault() {
 
 function extractInitials(name) { 
     return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '--'; 
+}
+
+function resolveDatasetKey(metadata) {
+    if (!metadata) return 'default';
+    if (typeof metadata === 'string') return metadata;
+    // In Calypso, templateId represents the concrete report blotter; packageId/domain is the grouping namespace
+    return metadata.templateId || metadata.domain || metadata.packageId || 'default';
 }
 
 function getPlatformThemeTokens() {
@@ -55,9 +63,11 @@ function formatMetricValue(value, formatSpec = {}) {
     }
 
     const num = Number(value);
-    const style = formatSpec.style || 'number';
-    const currency = formatSpec.currency || 'USD';
-    const compact = formatSpec.compact ?? (Math.abs(num) >= 1000000);
+    const style = (typeof formatSpec === 'string' ? formatSpec : formatSpec.style) || 'number';
+    const currency = (typeof formatSpec === 'object' ? formatSpec.currency : null) || 'USD';
+    const compact = (typeof formatSpec === 'object' && formatSpec.compact !== undefined) 
+        ? formatSpec.compact 
+        : (Math.abs(num) >= 1000000);
 
     try {
         if (style === 'currency') {
@@ -85,6 +95,12 @@ function formatMetricValue(value, formatSpec = {}) {
         if (style === 'bps') {
             const bpsVal = Math.abs(num) <= 1 ? num * 10000 : num;
             return `${bpsVal.toFixed(1)} bps`;
+        }
+
+        if (style === 'integer') {
+            return new Intl.NumberFormat('en-US', {
+                maximumFractionDigits: 0
+            }).format(num);
         }
 
         if (compact) {
@@ -163,10 +179,6 @@ function hexToRgba(hex, alpha = 1) {
     return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
 }
 
-/**
- * Builds a complete Chart.js configuration object from the declarative JSON specification.
- * Supports: Combo (Bar + Line), Dual Scales (y & y1), Stacked axes, Area Gradients & Radial charts.
- */
 function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) {
     const tokens = getPlatformThemeTokens();
     const isCombo = chartSpec.type === 'combo';
@@ -174,7 +186,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
     const isRadial = rootType === 'doughnut' || rootType === 'pie' || rootType === 'polarArea' || rootType === 'radar';
     const isHorizontal = chartSpec.indexAxis === 'y';
 
-    // Auto-resolve when raw dataset rows are passed directly or seriesDataMap is omitted
     let finalLabels = labels;
     let finalSeriesDataMap = seriesDataMap || {};
 
@@ -195,7 +206,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
         });
     }
 
-    // 1. Build Datasets
     const datasets = (chartSpec.series || []).map((s, idx) => {
         const baseColor = s.color || tokens.palette[idx % tokens.palette.length];
         const seriesType = s.type || (isCombo ? 'bar' : rootType);
@@ -240,7 +250,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
         };
     });
 
-    // 2. Build Universal Scaled Axes
     const scales = {};
     if (!isRadial) {
         const categoryAxisKey = isHorizontal ? 'y' : 'x';
@@ -285,7 +294,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
             } : undefined
         };
 
-        // Dual Axis Support (y1 or x1)
         const secondaryValAxisKey = isHorizontal ? 'x1' : 'y1';
         if (chartSpec.scales?.[secondaryValAxisKey]) {
             const rawSecondaryScale = chartSpec.scales[secondaryValAxisKey];
@@ -318,7 +326,6 @@ function buildChartJsConfig(chartSpec, labels, seriesDataMap, canvasCtx = null) 
         }
     }
 
-    // 3. Assemble Options & Intelligent Interaction Tooltips
     return {
         type: rootType,
         data: { labels: finalLabels, datasets },
@@ -412,7 +419,6 @@ function createChassisComponent(titleText, bodyHTMLContent, isExpandable = false
 // ============================================================================
 
 function bindChartInteractiveEvents() { 
-    // Custom SVG / Heatmap Tooltip handling
     const chartContainers = document.querySelectorAll('.css-chart-viewport-svg, .heatmap-container'); 
     chartContainers.forEach(container => { 
         const tooltip = container.querySelector('.studio-chart-tooltip'); 
@@ -438,7 +444,6 @@ function bindChartInteractiveEvents() {
         }); 
     }); 
     
-    // Dataset vs Visual Toggle Switch (Card & Modal Scopes)
     document.querySelectorAll('.chassis-switch-btn').forEach(btn => { 
         if (btn.dataset.listenerAttached) return;
         btn.dataset.listenerAttached = 'true';
@@ -589,7 +594,6 @@ function bindModalEvents(getChartInstanceFn) {
         if (!bodyContent) return;
         modalBody.innerHTML = bodyContent.innerHTML;
 
-        // Enlargement scaling: 1.2x proportional expansion
         if (modalContainer) {
             const rect = chassis.getBoundingClientRect();
             const originWidth = rect.width || 600;
@@ -614,7 +618,6 @@ function bindModalEvents(getChartInstanceFn) {
             modalContainer.style.aspectRatio = 'unset';
         }
 
-        // Synchronize switch view state
         const cardActiveBtn = chassis.querySelector('.ui-chassis-view-switch .chassis-switch-btn.active');
         const activeView = cardActiveBtn ? cardActiveBtn.getAttribute('data-view') : 'visual';
 
@@ -640,7 +643,6 @@ function bindModalEvents(getChartInstanceFn) {
 
         bindChartInteractiveEvents();
 
-        // Advanced Chart Recreation with Multi-Scale & Combo Support Preserved
         const modalCanvas = modalBody.querySelector('canvas');
         const origChart = getChartInstanceFn ? getChartInstanceFn(targetId) : null;
 
@@ -650,10 +652,8 @@ function bindModalEvents(getChartInstanceFn) {
                 const rawConfig = origChart.config;
                 const modalCtx = modalCanvas.getContext('2d');
                 
-                // Deep copy datasets preserving complex visual attributes
                 const modalDatasets = rawConfig.data.datasets.map(ds => {
                     const cloned = { ...ds, data: ds.data ? [...ds.data] : [] };
-                    // Rehydrate linear gradient if filled line
                     if (ds.type === 'line' && ds.fill && ds.borderColor && typeof ds.borderColor === 'string') {
                         cloned.backgroundColor = createChartColorGradient(modalCtx, ds.borderColor, 0.35, 0.01);
                     }
@@ -728,7 +728,6 @@ window.setDashboardTheme = function(mode = 'toggle') {
         document.body.classList.toggle('dark-mode', !isLight);
     }
 
-    // Notify registered charts of palette & theme shifts
     if (window.Chart && typeof window.Chart.instances === 'object') {
         Object.values(window.Chart.instances).forEach(chart => {
             try {
@@ -743,9 +742,7 @@ window.setDashboardTheme = function(mode = 'toggle') {
                     chart.options.plugins.legend.labels.color = tokens.textColor;
                 }
                 chart.update();
-            } catch (err) {
-                // Ignore instances mid-destruction
-            }
+            } catch (err) {}
         });
     }
 };
@@ -765,10 +762,6 @@ window.addEventListener('message', (event) => {
 // 9. URL HASH SPECIFICATION DECOMPRESSION & HYDRATION ENGINE
 // ============================================================================
 
-/**
- * Built-in standalone LZString URI decompressor fallback.
- * Decodes URI-safe compressed payloads without requiring external CDN bundles.
- */
 function decompressLZString(input) {
     if (window.LZString && typeof window.LZString.decompressFromEncodedURIComponent === 'function') {
         return window.LZString.decompressFromEncodedURIComponent(input);
@@ -933,14 +926,8 @@ function decompressLZString(input) {
     }
 }
 
-/**
- * Universal Specification Extractor:
- * Supports query parameters (?spec=, ?lz=) and hash fragments (#spec=, #lz=).
- * Query parameters take precedence to survive Google Redirect Notices and outbound link proxies.
- */
 function parseUrlHashSpec() {
     try {
-        // 1. Inspect URL Query Parameters (?spec= or ?lz=)
         const searchParams = new URLSearchParams(window.location.search);
         if (searchParams.has('lz')) {
             const jsonStr = decompressLZString(searchParams.get('lz'));
@@ -951,7 +938,6 @@ function parseUrlHashSpec() {
             return JSON.parse(decodeURIComponent(raw));
         }
 
-        // 2. Fallback to URL Hash Fragments (#lz= or #spec=)
         const hash = window.location.hash;
         if (hash && hash.length >= 5) {
             if (hash.startsWith('#lz=')) {
@@ -966,19 +952,17 @@ function parseUrlHashSpec() {
 
         return null;
     } catch (e) {
-        console.error('[PlatformRuntime] Error parsing specification from URL (search/hash):', e);
+        console.error('[PlatformRuntime] Error parsing specification from URL:', e);
         return null;
     }
 }
 
-/**
- * Automates specification extraction and dispatches hydration to workspace.html.
- */
 function initFromUrlHash() {
     const spec = parseUrlHashSpec();
     if (!spec) return null;
 
-    console.log(`[PlatformRuntime] Hydrating AST from URL Hash: ${spec.metadata?.dashboardId || spec.metadata?.title || 'custom'}`);
+    const datasetId = resolveDatasetKey(spec.metadata);
+    console.log(`[PlatformRuntime] Hydrating AST from URL Hash: ${datasetId}`);
 
     window.dashboardSpec = spec;
     window.activeDashboardSpec = spec;
@@ -986,7 +970,6 @@ function initFromUrlHash() {
         window.activeDataset = spec.contract.sampleData;
     }
 
-    // 1. Invoke standard workspace runtime hydration callbacks if defined
     if (typeof window.hydrateDashboard === 'function') {
         window.hydrateDashboard(spec);
     } else if (typeof window.renderDashboard === 'function') {
@@ -999,11 +982,9 @@ function initFromUrlHash() {
         window.applyDashboardSpec(spec);
     }
 
-    // 2. Broadcast custom events for decoupled UI frameworks
     window.dispatchEvent(new CustomEvent('dashboard:spec-loaded', { detail: spec }));
     window.dispatchEvent(new CustomEvent('calypso:load-spec', { detail: spec }));
 
-    // 3. Fallback: Prefill input/modal textarea and trigger submit if present in DOM
     const specInput = document.getElementById('aiSpecInput') || 
                       document.getElementById('specInput') || 
                       document.querySelector('textarea.spec-input, textarea[data-spec-input]');
@@ -1024,7 +1005,6 @@ function initFromUrlHash() {
     return spec;
 }
 
-// Global contract upload listener to synchronize dataset across file-drops and upload modals
 window.addEventListener('contract:uploaded', (e) => {
     if (!e.detail) return;
     const records = e.detail.sampleData || e.detail.data || (Array.isArray(e.detail) ? e.detail : []);
@@ -1041,7 +1021,6 @@ window.addEventListener('contract:uploaded', (e) => {
     }
 });
 
-// Auto-bootstrap from hash on DOM ready and on hashchange
 if (typeof window !== 'undefined') {
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
@@ -1061,6 +1040,7 @@ if (typeof window !== 'undefined') {
 // ============================================================================
 
 window.PlatformRuntime = {
+    resolveDatasetKey,
     buildChartJsConfig,
     formatMetricValue,
     getPlatformThemeTokens,
