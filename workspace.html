@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
-    <!-- Native Host Runtime Mechanics (PlatformRuntime V2.0) -->
+    <!-- Native Host Runtime Mechanics (PlatformRuntime V2.03) -->
     <script src="https://mostafa-maeza-pro.github.io/dashboardstudio/PlatformRuntime.js"></script>
 </head>
 <body>
@@ -137,8 +137,7 @@
         </section>
     </main>
 
-    <!-- GENERIC RUNTIME ENGINE -->
-    <!-- GENERIC RUNTIME ENGINE (ALIGNED WITH CALYPSO AST V1.0) -->
+    <!-- GENERIC RUNTIME ENGINE (SINGLE SOURCE OF TRUTH & DOMAIN RECONCILIATION) -->
     <script>
     const IS_PRODUCTION_MODE = false;
 
@@ -152,6 +151,15 @@
         '#38bdf8', '#818cf8', '#34d399', '#f43f5e', 
         '#fbbf24', '#a855f7', '#fb923c', '#2dd4bf'
     ];
+
+    function resolveDatasetDomain(obj, fallback = "default") {
+        if (!obj) return fallback;
+        if (window.PlatformRuntime && typeof window.PlatformRuntime.resolveDatasetKey === 'function') {
+            return window.PlatformRuntime.resolveDatasetKey(obj.metadata || obj);
+        }
+        const meta = obj.metadata || obj;
+        return meta.templateId || meta.domain || meta.packageId || obj.d || fallback;
+    }
 
     function setWorkspaceLoading(isLoading, message = 'Processing Dataset...') {
         const loader = document.getElementById('studioGlobalLoader');
@@ -188,6 +196,51 @@
         return isNaN(num) ? 0 : num;
     }
 
+    function getContractColumnsMap(rawCols) {
+        if (!rawCols) return {};
+        if (!Array.isArray(rawCols) && typeof rawCols === 'object') return rawCols;
+        const map = {};
+        if (Array.isArray(rawCols)) {
+            rawCols.forEach(col => {
+                if (typeof col === 'string') {
+                    map[col] = 'String';
+                } else if (col && col.name) {
+                    map[col.name] = col.type || 'String';
+                }
+            });
+        }
+        return map;
+    }
+
+    function validateAndSanitizeRows(rows, contractColumns) {
+        if (!rows || rows.length === 0 || !contractColumns) return rows;
+        const colMap = getContractColumnsMap(contractColumns);
+        const contractKeys = Object.keys(colMap);
+        if (contractKeys.length === 0) return rows;
+
+        const lookup = {};
+        contractKeys.forEach(k => {
+            lookup[k.toLowerCase().trim()] = k;
+        });
+
+        return rows.map(row => {
+            const sanitized = {};
+            Object.keys(row).forEach(rawKey => {
+                const canonicalKey = lookup[rawKey.toLowerCase().trim()] || rawKey;
+                const expectedType = colMap[canonicalKey];
+                const isDateField = /date|maturity|expiry|settle|time/i.test(canonicalKey);
+
+                // Protect date strings from being truncated into year integers by cleanNumber
+                if (expectedType === 'Number' && !isDateField) {
+                    sanitized[canonicalKey] = cleanNumber(row[rawKey]);
+                } else {
+                    sanitized[canonicalKey] = row[rawKey];
+                }
+            });
+            return sanitized;
+        });
+    }
+
     class DashboardRuntimeParser {
         constructor(options = {}) {
             this.spec = null;
@@ -212,8 +265,11 @@
                 this.activeCriteria = Array.isArray(appliedCriteria) ? [...appliedCriteria] : [];
             }
 
-            const availableDomains = Object.keys(this.activeData);
+            const nonDefaultDomains = Object.keys(this.activeData).filter(k => k !== 'default');
+            const availableDomains = nonDefaultDomains.length > 0 ? nonDefaultDomains : Object.keys(this.activeData);
+
             this.currentDomain = this.spec.metadata?.activeDomain 
+                || (this.spec.metadata?.templateId && this.activeData[this.spec.metadata.templateId] ? this.spec.metadata.templateId : null)
                 || (availableDomains.length > 0 ? availableDomains[0] : "default");
 
             this._hydrateHeaderMeta();
@@ -228,17 +284,37 @@
         }
 
         _resolveField(field, rows = []) {
+            if (!field) return field;
             if (!rows || rows.length === 0) return field;
             const datePattern = /^\d{1,2}-[A-Za-z]{3}-\d{2,4}$|^\d{4}-\d{2}-\d{2}$/;
             const dateCols = Object.keys(rows[0]).filter(k => datePattern.test(k.trim()));
 
-            if (!field || field === '[<DATE>]' || field === '[LATEST_DATE]' || (datePattern.test(field) && !(field in rows[0]))) {
+            if (field === '[<DATE>]' || field === '[LATEST_DATE]' || (datePattern.test(field) && !(field in rows[0]))) {
                 return dateCols.length > 0 ? dateCols[dateCols.length - 1] : field;
             }
             if (field === '[FIRST_DATE]') {
                 return dateCols.length > 0 ? dateCols[0] : field;
             }
             return field;
+        }
+
+        _getDatasetForDomain(domName) {
+            if (domName && this.activeData[domName] && this.activeData[domName].length > 0) {
+                return this.activeData[domName];
+            }
+            if (this.currentDomain && this.activeData[this.currentDomain] && this.activeData[this.currentDomain].length > 0) {
+                return this.activeData[this.currentDomain];
+            }
+            const keys = Object.keys(this.activeData).filter(k => k !== 'default');
+            for (const k of keys) {
+                if (this.activeData[k] && this.activeData[k].length > 0) {
+                    return this.activeData[k];
+                }
+            }
+            if (this.activeData['default'] && this.activeData['default'].length > 0) {
+                return this.activeData['default'];
+            }
+            return [];
         }
 
         _hydrateHeaderMeta() {
@@ -256,7 +332,7 @@
                     : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                 let valDate = "Live Active";
-                const sampleRows = this.activeData[this.currentDomain] || [];
+                const sampleRows = this._getDatasetForDomain(this.currentDomain);
                 if (sampleRows.length > 0) {
                     const dateCol = Object.keys(sampleRows[0]).find(k => /^\d{2}-[A-Za-z]{3}-\d{2,4}$/.test(k) || k.toLowerCase().includes('date'));
                     if (dateCol) {
@@ -272,7 +348,7 @@
             const container = document.getElementById('studio-criteria-fields-container');
             if (!container) return;
 
-            const domainCfg = CONTRACT_REGISTRY[this.currentDomain] || {};
+            const domainCfg = CONTRACT_REGISTRY[this.currentDomain] || CURRENT_SPEC?.contract || {};
             const inputParameters = this.spec.criteriaDeck?.inputParameters 
                 || (domainCfg.exposedCriteria || []).map(c => ({ id: 'param-' + c.name, label: c.name, field: c.name, type: c.type, defaultValue: c.defaultValue }));
 
@@ -380,9 +456,8 @@
             outlet.innerHTML = '';
 
             (this.spec.kpis || []).forEach(kpiSpec => {
-                const targetDomain = (kpiSpec.domain && this.activeData[kpiSpec.domain]) ? kpiSpec.domain : this.currentDomain;
-                const domainRows = this.activeData[targetDomain] || [];
-                const targetField = this._resolveField(kpiSpec.field, domainRows);
+                const domainRows = this._getDatasetForDomain(kpiSpec.domain);
+                const targetField = this._resolveField(kpiSpec.field || kpiSpec.metric, domainRows);
 
                 const rawVal = this._computeAggregation(domainRows, targetField, kpiSpec.aggregation, kpiSpec.weightField);
                 const formattedVal = this._formatValue(rawVal, kpiSpec.format);
@@ -412,8 +487,7 @@
 
             (this.spec.charts || []).forEach(chartSpec => {
                 const chartId = chartSpec.id;
-                const targetDomain = (chartSpec.domain && this.activeData[chartSpec.domain]) ? chartSpec.domain : this.currentDomain;
-                const domainRows = this.activeData[targetDomain] || [];
+                const domainRows = this._getDatasetForDomain(chartSpec.domain);
                 const { labels, datasets, seriesDataMap, tableData } = this._buildChartDataModel(chartSpec, domainRows);
 
                 const bodyHtml = '<div class="chart-panel-content chart-visual-panel" style="position: relative; height: 280px; width: 100%;">' +
@@ -445,26 +519,71 @@
                     const ctx = canvas.getContext('2d');
                     let chartConfig = null;
 
-                    if (window.PlatformRuntime && typeof window.PlatformRuntime.buildChartJsConfig === 'function') {
-                        chartConfig = window.PlatformRuntime.buildChartJsConfig(chartSpec, labels, seriesDataMap, ctx);
-                    } else {
-                        const chartType = chartSpec.type === 'horizontalBar' ? 'bar' : (chartSpec.type || 'bar');
-                        const chartOpts = this._buildChartOptions(chartSpec);
+                    try {
+                        if (window.PlatformRuntime && typeof window.PlatformRuntime.buildChartJsConfig === 'function') {
+                            chartConfig = window.PlatformRuntime.buildChartJsConfig(chartSpec, labels, seriesDataMap, ctx, datasets);
+                        } else {
+                            const chartType = chartSpec.type === 'horizontalBar' ? 'bar' : (chartSpec.type === 'combo' ? 'bar' : (chartSpec.type || 'bar'));
+                            const chartOpts = this._buildChartOptions(chartSpec);
 
-                        chartConfig = {
-                            type: chartType,
-                            data: { labels, datasets },
-                            options: chartOpts
-                        };
+                            chartConfig = {
+                                type: chartType,
+                                data: { labels, datasets },
+                                options: chartOpts
+                            };
+                        }
+
+                        this.chartInstances[chartId] = new Chart(ctx, chartConfig);
+                    } catch (chartErr) {
+                        console.error(`[DashboardStudio] Error initializing chart "${chartSpec.title}":`, chartErr);
                     }
-
-                    this.chartInstances[chartId] = new Chart(ctx, chartConfig);
                 }
             });
         }
 
         _buildChartDataModel(chartSpec, rows) {
-            const hasCategoryGrouping = Boolean(chartSpec.dimensions?.groupBy || chartSpec.categoryAxis);
+            const groupField = chartSpec.categoryField 
+                || chartSpec.categoryAxis 
+                || chartSpec.dimension 
+                || chartSpec.groupBy 
+                || chartSpec.dimensions?.groupBy 
+                || (rows[0] ? Object.keys(rows[0])[0] : "Category");
+
+            const hasCategoryGrouping = Boolean(
+                chartSpec.dimensions?.groupBy || 
+                chartSpec.categoryAxis || 
+                chartSpec.categoryField || 
+                chartSpec.dimension || 
+                chartSpec.groupBy
+            );
+
+            // Month-Year Date Truncation Helper
+            const isDateField = /date|maturity|expiry|settle/i.test(groupField);
+            const needsMonthYear = Boolean(
+                chartSpec.granularity === 'month' ||
+                chartSpec.dateTrunc === 'month' ||
+                chartSpec.dateFormat === 'YYYY-MM' ||
+                /month/i.test(chartSpec.title || '') ||
+                /month/i.test(chartSpec.dimension || '') ||
+                /month/i.test(chartSpec.categoryAxis || '') ||
+                /month/i.test(chartSpec.groupBy || '')
+            );
+
+            const formatGroupKey = (val) => {
+                if (val === undefined || val === null || String(val).trim() === '') return 'Other';
+                const s = String(val).trim();
+                if (isDateField && needsMonthYear) {
+                    const isoMatch = s.match(/^(\d{4})-(\d{2})/);
+                    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+                    const dMatch = s.match(/^\d{1,2}-([A-Za-z]{3})-(\d{2,4})/);
+                    if (dMatch) return `${dMatch[1]} ${dMatch[2]}`;
+                    const d = new Date(s);
+                    if (!isNaN(d.getTime())) {
+                        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                    }
+                }
+                return s;
+            };
 
             // A. Dynamic Horizon Trend Chart
             if (chartSpec.dynamicHorizon?.enabled && !hasCategoryGrouping && rows.length > 0) {
@@ -475,17 +594,23 @@
                 const defaultLabel = chartSpec.title || (this.currentDomain + ' Total');
                 const seriesList = (chartSpec.series && chartSpec.series.length > 0)
                     ? chartSpec.series
-                    : [{ label: defaultLabel, field: '[<DATE>]', color: CHART_COLOR_PALETTE[0] }];
+                    : [{ label: defaultLabel, field: '[<DATE>]', metric: '[<DATE>]', color: CHART_COLOR_PALETTE[0] }];
 
                 const seriesDataMap = {};
                 const datasets = seriesList.map((seriesCfg, sIdx) => {
-                    const sField = seriesCfg.field || '[<DATE>]';
+                    const sField = seriesCfg.field || seriesCfg.metric || '[<DATE>]';
                     const dataPoints = labels.map(dateKey => rows.reduce((acc, r) => acc + cleanNumber(r[dateKey]), 0));
                     seriesDataMap[sField] = dataPoints;
+                    if (seriesCfg.field) seriesDataMap[seriesCfg.field] = dataPoints;
+                    if (seriesCfg.metric) seriesDataMap[seriesCfg.metric] = dataPoints;
+                    if (seriesCfg.label) seriesDataMap[seriesCfg.label] = dataPoints;
+
                     const color = seriesCfg.color || CHART_COLOR_PALETTE[sIdx % CHART_COLOR_PALETTE.length];
 
                     return {
                         label: seriesCfg.label || defaultLabel,
+                        field: sField,
+                        metric: sField,
                         type: seriesCfg.type || chartSpec.type || 'bar',
                         data: dataPoints,
                         borderColor: color,
@@ -507,13 +632,17 @@
             }
 
             // B. Categorical Grouping (Dimensions & Multi-Metric / Stacked Pivots)
-            const groupField = chartSpec.dimensions?.groupBy || chartSpec.categoryAxis || Object.keys(rows[0] || {})[0] || "Category";
             const seriesField = chartSpec.seriesField;
-            const primaryMeasure = chartSpec.series?.[0]?.field || chartSpec.valueAxis || Object.keys(rows[0] || {})[1] || "Amount";
+            const primaryMeasure = chartSpec.measureField 
+                || chartSpec.metric 
+                || chartSpec.valueAxis
+                || chartSpec.series?.[0]?.field 
+                || chartSpec.series?.[0]?.metric 
+                || (rows[0] ? Object.keys(rows[0])[1] : "Amount");
 
-            // Case B1: Dimensional Pivot (e.g., category: Put/Call, seriesField: Buy/Sell)
+            // Case B1: Dimensional Pivot
             if (seriesField) {
-                const uniqueCats = Array.from(new Set(rows.map(r => String(r[groupField] ?? 'Other'))));
+                const uniqueCats = Array.from(new Set(rows.map(r => formatGroupKey(r[groupField]))));
                 const uniqueSeries = Array.from(new Set(rows.map(r => String(r[seriesField] ?? 'Default'))));
                 const matrix = {};
 
@@ -523,7 +652,7 @@
                 });
 
                 rows.forEach(r => {
-                    const c = String(r[groupField] ?? 'Other');
+                    const c = formatGroupKey(r[groupField]);
                     const s = String(r[seriesField] ?? 'Default');
                     if (matrix[c] && matrix[c][s] !== undefined) {
                         matrix[c][s] += cleanNumber(r[primaryMeasure]);
@@ -535,6 +664,8 @@
                     const color = CHART_COLOR_PALETTE[sIdx % CHART_COLOR_PALETTE.length];
                     return {
                         label: sKey,
+                        field: sKey,
+                        metric: sKey,
                         data: labels.map(l => matrix[l][sKey]),
                         backgroundColor: color,
                         borderColor: color,
@@ -543,7 +674,10 @@
                 });
 
                 const seriesDataMap = {};
-                datasets.forEach(d => { seriesDataMap[d.label] = d.data; });
+                datasets.forEach(d => { 
+                    seriesDataMap[d.label] = d.data;
+                    seriesDataMap[d.field] = d.data;
+                });
 
                 const tableHeaders = [groupField, ...uniqueSeries];
                 const tableRows = labels.map(l => [
@@ -562,31 +696,34 @@
             // Case B2: Standard Metric Aggregation
             const seriesList = (chartSpec.series && chartSpec.series.length > 0)
                 ? chartSpec.series
-                : [{ field: primaryMeasure, label: chartSpec.title || "Value" }];
+                : [{ field: primaryMeasure, metric: primaryMeasure, label: chartSpec.title || "Value" }];
 
             const groupAggregates = {};
             rows.forEach(r => {
                 const rawKey = r[groupField];
-                const key = (rawKey !== undefined && rawKey !== null && String(rawKey).trim() !== '') ? String(rawKey) : "Other";
+                const key = formatGroupKey(rawKey);
                 if (!groupAggregates[key]) {
                     groupAggregates[key] = { _count: 0 };
                     seriesList.forEach(s => {
-                        const resolvedF = this._resolveField(s.field, rows);
-                        groupAggregates[key][resolvedF] = 0;
+                        const mKey = s.field || s.metric;
+                        const resolvedF = this._resolveField(mKey, rows);
+                        if (resolvedF) groupAggregates[key][resolvedF] = 0;
                     });
                 }
                 groupAggregates[key]._count += 1;
                 seriesList.forEach(s => {
-                    const resolvedF = this._resolveField(s.field, rows);
-                    groupAggregates[key][resolvedF] += cleanNumber(r[resolvedF]);
+                    const mKey = s.field || s.metric;
+                    const resolvedF = this._resolveField(mKey, rows);
+                    if (resolvedF) groupAggregates[key][resolvedF] += cleanNumber(r[resolvedF]);
                 });
             });
 
-            // Average normalization for rate/ratio metrics
+            // Average normalization for rates and ratios
             seriesList.forEach(s => {
-                const resolvedF = this._resolveField(s.field, rows);
+                const mKey = s.field || s.metric;
+                const resolvedF = this._resolveField(mKey, rows);
                 const isAvg = (s.aggregation === 'avg') || /strike|rate|yield|pct|percent|moneyness|delta %|iv|implied/i.test(resolvedF);
-                if (isAvg) {
+                if (isAvg && resolvedF) {
                     Object.keys(groupAggregates).forEach(k => {
                         const count = groupAggregates[k]._count;
                         if (count > 0) groupAggregates[k][resolvedF] /= count;
@@ -594,7 +731,8 @@
                 }
             });
 
-            const resolvedPrimary = this._resolveField(seriesList[0].field, rows);
+            const primarySeriesKey = seriesList[0].field || seriesList[0].metric;
+            const resolvedPrimary = this._resolveField(primarySeriesKey, rows);
             let sortedKeys = Object.keys(groupAggregates).sort((a, b) => {
                 const valA = Math.abs(groupAggregates[a][resolvedPrimary] || 0);
                 const valB = Math.abs(groupAggregates[b][resolvedPrimary] || 0);
@@ -615,10 +753,13 @@
                 if (chartSpec.dimensions?.otherBucket ?? chartSpec.otherBucket ?? true) {
                     const otherBucket = { _count: 0 };
                     seriesList.forEach(s => {
-                        const resolvedF = this._resolveField(s.field, rows);
-                        const remainingSum = sortedKeys.slice(topN).reduce((sum, k) => sum + (groupAggregates[k][resolvedF] || 0), 0);
-                        const isAvg = (s.aggregation === 'avg') || /strike|rate|yield|pct|percent/i.test(resolvedF);
-                        otherBucket[resolvedF] = isAvg ? (remainingSum / Math.max(1, sortedKeys.length - topN)) : remainingSum;
+                        const mKey = s.field || s.metric;
+                        const resolvedF = this._resolveField(mKey, rows);
+                        if (resolvedF) {
+                            const remainingSum = sortedKeys.slice(topN).reduce((sum, k) => sum + (groupAggregates[k][resolvedF] || 0), 0);
+                            const isAvg = (s.aggregation === 'avg') || /strike|rate|yield|pct|percent/i.test(resolvedF);
+                            otherBucket[resolvedF] = isAvg ? (remainingSum / Math.max(1, sortedKeys.length - topN)) : remainingSum;
+                        }
                     });
                     groupAggregates["Other"] = otherBucket;
                     topKeys.push("Other");
@@ -629,31 +770,43 @@
             const labels = sortedKeys;
             const seriesDataMap = {};
             const datasets = seriesList.map((s, idx) => {
-                const resolvedF = this._resolveField(s.field, rows);
-                const dataArr = labels.map(l => groupAggregates[l] ? groupAggregates[l][resolvedF] : 0);
-                seriesDataMap[s.field] = dataArr;
-                if (resolvedF !== s.field) seriesDataMap[resolvedF] = dataArr;
+                const sKey = s.field || s.metric;
+                const resolvedF = this._resolveField(sKey, rows);
+                const dataArr = labels.map(l => (groupAggregates[l] && resolvedF) ? groupAggregates[l][resolvedF] : 0);
+
+                seriesDataMap[sKey] = dataArr;
+                if (s.field) seriesDataMap[s.field] = dataArr;
+                if (s.metric) seriesDataMap[s.metric] = dataArr;
+                if (s.label) seriesDataMap[s.label] = dataArr;
+                if (resolvedF) seriesDataMap[resolvedF] = dataArr;
 
                 const color = s.color || CHART_COLOR_PALETTE[idx % CHART_COLOR_PALETTE.length];
-                const chartType = s.type || chartSpec.type || 'bar';
+                const chartType = s.type || (chartSpec.type === 'combo' ? 'bar' : (chartSpec.type || 'bar'));
 
-                return {
-                    label: s.label || s.field || chartSpec.title,
+                const datasetObj = {
+                    label: s.label || sKey || chartSpec.title,
+                    field: sKey,
+                    metric: sKey,
                     type: chartType,
                     data: dataArr,
                     borderColor: color,
                     backgroundColor: chartType === 'line' ? 'transparent' : color,
                     fill: chartSpec.fill ?? false,
-                    tension: chartSpec.tension ?? 0.2
+                    tension: s.tension ?? chartSpec.tension ?? 0.2
                 };
+                if (s.yAxisID) {
+                    datasetObj.yAxisID = s.yAxisID;
+                }
+                return datasetObj;
             });
 
-            const tableHeaders = [groupField, ...seriesList.map(s => s.label || s.field)];
+            const tableHeaders = [groupField, ...seriesList.map(s => s.label || s.field || s.metric)];
             const tableRows = labels.map(l => [
                 l,
                 ...seriesList.map(s => {
-                    const resolvedF = this._resolveField(s.field, rows);
-                    const val = groupAggregates[l] ? groupAggregates[l][resolvedF] : 0;
+                    const mKey = s.field || s.metric;
+                    const resolvedF = this._resolveField(mKey, rows);
+                    const val = (groupAggregates[l] && resolvedF) ? groupAggregates[l][resolvedF] : 0;
                     const isRate = /strike|rate|yield|pct|percent|iv/i.test(resolvedF);
                     return this._formatValue(val, { style: isRate ? 'number' : 'currency', decimals: isRate ? 4 : 2 });
                 })
@@ -671,6 +824,40 @@
             const isHorizontal = chartSpec.type === 'horizontalBar' || chartSpec.indexAxis === 'y';
             const isStacked = Boolean(chartSpec.stacked);
 
+            const scales = chartSpec.scales ? JSON.parse(JSON.stringify(chartSpec.scales)) : (chartSpec.type === 'doughnut' ? {} : {
+                x: {
+                    stacked: isStacked,
+                    grid: { color: isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
+                    ticks: isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
+                },
+                y: {
+                    stacked: isStacked,
+                    grid: { color: !isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
+                    ticks: !isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
+                }
+            });
+
+            if (chartSpec.scales) {
+                Object.keys(scales).forEach(axisKey => {
+                    const axis = scales[axisKey];
+                    if (typeof axis === 'object' && axis !== null) {
+                        if (!axis.ticks) {
+                            axis.ticks = { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) };
+                        }
+                        if (axis.grid === false) {
+                            axis.grid = { display: false };
+                        } else if (!axis.grid) {
+                            axis.grid = { color: 'rgba(255, 255, 255, 0.05)' };
+                        }
+                    } else if (typeof axis === 'string') {
+                        scales[axisKey] = {
+                            position: axisKey === 'y1' ? 'right' : 'left',
+                            grid: { display: axisKey !== 'y1' }
+                        };
+                    }
+                });
+            }
+
             return {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -681,18 +868,7 @@
                         labels: { boxWidth: 10, font: { size: 11 } }
                     }
                 },
-                scales: chartSpec.type === 'doughnut' ? {} : {
-                    x: {
-                        stacked: isStacked,
-                        grid: { color: isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
-                        ticks: isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
-                    },
-                    y: {
-                        stacked: isStacked,
-                        grid: { color: !isHorizontal ? 'rgba(255, 255, 255, 0.05)' : 'transparent' },
-                        ticks: !isHorizontal ? { callback: (v) => this._formatValue(v, { style: 'currency', notation: 'compact' }) } : {}
-                    }
-                }
+                scales: scales
             };
         }
 
@@ -738,11 +914,14 @@
         }
 
         _generateDataGridMarkup(gridConfig) {
-            const availableDomains = Object.keys(this.activeData);
-            const activeDom = this.currentDomain;
+            const allDomains = Object.keys(this.activeData || {});
+            const nonDefaultDomains = allDomains.filter(d => d !== 'default');
+            const availableDomains = nonDefaultDomains.length > 0 ? nonDefaultDomains : allDomains;
+
+            const activeDom = (this.activeData[this.currentDomain] ? this.currentDomain : availableDomains[0]) || "default";
             const domState = this._getDomainState(activeDom);
             
-            const rawCols = CONTRACT_REGISTRY[activeDom]?.columns;
+            const rawCols = CONTRACT_REGISTRY[activeDom]?.columns || CURRENT_SPEC?.contract?.columns;
             let normalizedCols = [];
 
             if (Array.isArray(rawCols)) {
@@ -1135,22 +1314,24 @@
             }
 
             const num = cleanNumber(val);
-            if (formatCfg.style === 'currency') {
+            const style = (typeof formatCfg === 'string' ? formatCfg : formatCfg.style) || 'number';
+
+            if (style === 'currency') {
                 return new Intl.NumberFormat('en-US', {
                     style: 'currency',
-                    currency: formatCfg.currency || 'USD',
-                    notation: formatCfg.notation || 'standard',
-                    maximumFractionDigits: formatCfg.decimals ?? 2
+                    currency: (typeof formatCfg === 'object' ? formatCfg.currency : null) || 'USD',
+                    notation: (typeof formatCfg === 'object' ? formatCfg.notation : null) || 'standard',
+                    maximumFractionDigits: (typeof formatCfg === 'object' ? formatCfg.decimals : null) ?? 2
                 }).format(num);
             }
 
-            if (formatCfg.style === 'percent') {
-                return num.toFixed(formatCfg.decimals ?? 2) + '%';
+            if (style === 'percent') {
+                return num.toFixed((typeof formatCfg === 'object' ? formatCfg.decimals : null) ?? 2) + '%';
             }
 
             return new Intl.NumberFormat('en-US', {
-                notation: formatCfg.notation || 'standard',
-                maximumFractionDigits: formatCfg.decimals ?? 0
+                notation: (typeof formatCfg === 'object' ? formatCfg.notation : null) || 'standard',
+                maximumFractionDigits: (typeof formatCfg === 'object' ? formatCfg.decimals : null) ?? 0
             }).format(num);
         }
 
@@ -1165,27 +1346,24 @@
 
     window.DashboardRuntimeParser = DashboardRuntimeParser;
 
-    // AST NORMALIZATION ADAPTER
     function normalizeSpec(raw) {
         if (!raw) return null;
         
-        const domainName = raw.metadata?.domain 
-            || raw.metadata?.templateId 
-            || raw.d 
-            || Object.keys(raw.contractRegistry || {})[0] 
-            || "default";
+        const domainName = resolveDatasetDomain(raw);
 
-        // Register contract & sample data from spec.contract
         if (raw.contract) {
             CONTRACT_REGISTRY[domainName] = raw.contract;
-            if (raw.contract.sampleData && Array.isArray(raw.contract.sampleData)) {
-                ACTIVE_PACKAGE_DATA[domainName] = raw.contract.sampleData;
+            const rows = raw.contract.sampleData || raw.contract.data || [];
+            if (Array.isArray(rows) && rows.length > 0) {
+                ACTIVE_PACKAGE_DATA[domainName] = validateAndSanitizeRows(
+                    rows, 
+                    raw.contract.columns
+                );
             }
         } else if (raw.sampleData && Array.isArray(raw.sampleData)) {
             ACTIVE_PACKAGE_DATA[domainName] = raw.sampleData;
         }
 
-        // Normalize KPIs (AST: title, metric, aggregation)
         let kpis = [];
         if (Array.isArray(raw.kpis)) {
             kpis = raw.kpis.map((item, idx) => {
@@ -1197,6 +1375,7 @@
                     id: item.id || ('kpi-' + idx),
                     label: item.title || item.label || metricName,
                     field: metricName,
+                    metric: metricName,
                     aggregation: item.aggregation || 'sum',
                     format: item.format || { 
                         style: isRate ? 'percent' : (isCount ? 'number' : 'currency'), 
@@ -1208,13 +1387,35 @@
             });
         }
 
-        // Normalize Charts (AST: categoryField, measureField, seriesField, stacked, indexAxis)
         let charts = [];
         if (Array.isArray(raw.charts)) {
             charts = raw.charts.map((item, idx) => {
                 const isHorizontal = item.type === 'horizontalBar' || item.indexAxis === 'y';
-                const groupField = item.categoryField || item.categoryAxis || item.dimensions?.groupBy || item.dimension;
-                const valField = item.measureField || item.metric || item.series?.[0]?.field || item.valueAxis;
+                const groupField = item.categoryField 
+                    || item.categoryAxis 
+                    || item.dimension 
+                    || item.groupBy 
+                    || item.dimensions?.groupBy;
+
+                const valField = item.measureField 
+                    || item.metric 
+                    || item.series?.[0]?.field 
+                    || item.series?.[0]?.metric 
+                    || item.valueAxis;
+
+                let rawSeries = item.series;
+                if (!Array.isArray(rawSeries) || rawSeries.length === 0) {
+                    rawSeries = valField ? [{ field: valField, metric: valField, label: item.title }] : [{ label: item.title }];
+                }
+                const normalizedSeries = rawSeries.map((s, sIdx) => {
+                    const sField = s.field || s.metric || valField || `value_${sIdx}`;
+                    return {
+                        ...s,
+                        field: sField,
+                        metric: s.metric || s.field || sField,
+                        label: s.label || sField
+                    };
+                });
 
                 return {
                     id: item.id || ('chart-' + idx),
@@ -1225,10 +1426,17 @@
                     stacked: item.stacked || false,
                     scales: item.scales || undefined,
                     categoryAxis: groupField,
+                    dimension: groupField,
+                    groupBy: groupField,
                     valueAxis: valField,
+                    measureField: valField,
+                    metric: valField,
+                    granularity: item.granularity,
+                    dateFormat: item.dateFormat,
+                    dateTrunc: item.dateTrunc,
                     seriesField: item.seriesField,
                     dimensions: item.dimensions || (groupField ? { groupBy: groupField, topN: item.topN || 6, otherBucket: item.otherBucket ?? true } : {}),
-                    series: item.series || (valField ? [{ field: valField, label: item.title }] : [{ label: item.title }]),
+                    series: normalizedSeries,
                     dynamicHorizon: item.dynamicHorizon,
                     isExpandable: item.isExpandable ?? true,
                     hasDatasetToggle: item.hasDatasetToggle ?? true
@@ -1236,12 +1444,11 @@
             });
         }
 
-        // Bridge root grid to datagrids
         let datagrids = raw.datagrids || [];
         if (datagrids.length === 0 && raw.grid) {
             datagrids = [{
-                id: "table-positions-matrix",
-                title: (domainName + " Matrix"),
+                id: raw.grid.id || (domainName + " Matrix"),
+                title: raw.grid.title || (domainName + " Matrix"),
                 isExpandable: true,
                 defaultSort: raw.grid.defaultSort,
                 footerAggregates: raw.grid.footerAggregates
@@ -1254,7 +1461,9 @@
             metadata: {
                 title: raw.metadata?.title || (domainName + " Dashboard"),
                 activeDomain: domainName,
-                archetype: raw.metadata?.archetype || "Archetype B"
+                templateId: raw.metadata?.templateId || domainName,
+                packageId: raw.metadata?.packageId || raw.metadata?.domain,
+                archetype: raw.metadata?.archetype || "Archetype D"
             },
             criteriaDeck: raw.criteriaDeck || {},
             kpis: kpis.length > 0 ? kpis : undefined,
@@ -1263,19 +1472,70 @@
         };
     }
 
+    function autoGenerateSpecFromContract(contract, domain) {
+        const colMap = getContractColumnsMap(contract.columns || {});
+        const colNames = Object.keys(colMap);
+        const numCols = colNames.filter(k => colMap[k] === 'Number');
+        const strCols = colNames.filter(k => colMap[k] === 'String');
+
+        const primaryNum = numCols.find(c => /amount|notional|balance|npv|value/i.test(c)) || numCols[0] || "Value";
+        const primaryDim = strCols.find(c => /counterparty|client|entity|desk|book|portfolio|pair/i.test(c)) || strCols[0] || "Category";
+
+        return {
+            metadata: {
+                title: (contract.metadata?.templateId || domain || "Treasury") + " Dashboard",
+                activeDomain: domain,
+                templateId: contract.metadata?.templateId || domain,
+                packageId: contract.metadata?.packageId,
+                archetype: "Archetype D"
+            },
+            contract: contract,
+            kpis: [
+                { id: "kpi-0", label: "Total " + primaryNum, field: primaryNum, metric: primaryNum, aggregation: "sum", format: { style: "currency" } },
+                { id: "kpi-1", label: "Active Deals", field: colNames[0] || "ID", metric: colNames[0] || "ID", aggregation: "count", format: { style: "number" } }
+            ],
+            charts: [
+                {
+                    id: "chart-0",
+                    title: primaryNum + " by " + primaryDim,
+                    type: "bar",
+                    dimension: primaryDim,
+                    groupBy: primaryDim,
+                    series: [{ field: primaryNum, metric: primaryNum, label: primaryNum, aggregation: "sum" }]
+                }
+            ],
+            datagrids: [
+                {
+                    id: "table-positions-matrix",
+                    title: domain + " Matrix",
+                    isExpandable: true
+                }
+            ]
+        };
+    }
+
     function applyCompleteSpec(specObject) {
         if (!specObject) return;
 
-        const domainName = specObject.metadata?.domain 
-            || specObject.metadata?.templateId 
-            || specObject.d 
-            || "default";
+        const domainName = resolveDatasetDomain(specObject);
+
+        if (domainName !== 'default') {
+            delete ACTIVE_PACKAGE_DATA['default'];
+            delete CONTRACT_REGISTRY['default'];
+        }
 
         if (specObject.contract) {
             CONTRACT_REGISTRY[domainName] = specObject.contract;
-            if (specObject.contract.sampleData) {
-                ACTIVE_PACKAGE_DATA[domainName] = specObject.contract.sampleData;
+            const rows = specObject.contract.sampleData || specObject.contract.data || [];
+            if (Array.isArray(rows) && rows.length > 0) {
+                const sanitizedRows = validateAndSanitizeRows(
+                    rows,
+                    specObject.contract.columns
+                );
+                ACTIVE_PACKAGE_DATA[domainName] = sanitizedRows;
             }
+        } else if (specObject.sampleData && Array.isArray(specObject.sampleData)) {
+            ACTIVE_PACKAGE_DATA[domainName] = specObject.sampleData;
         }
 
         CURRENT_SPEC = normalizeSpec(specObject);
@@ -1289,41 +1549,80 @@
     function processIncomingPayloadGeneric(parsed, filename = "") {
         if (!parsed) return false;
 
-        // If uploading a complete AST spec
+        // 1. AST Spec Payload
         if (parsed.kpis || parsed.charts || parsed.grid || parsed.datagrids) {
             applyCompleteSpec(parsed);
             return true;
         }
 
         const cleanName = filename.replace(/\.(data|json|contract)$/i, '').trim();
-        const domain = parsed.metadata?.domain 
-            || parsed.metadata?.templateId 
-            || (cleanName && cleanName !== "data" && cleanName !== "" ? cleanName : currentDomain);
+        const incomingDomain = resolveDatasetDomain(parsed, cleanName || currentDomain);
 
+        // 2. Schema Definition (.contract)
         if (parsed.columns || parsed.exposedCriteria) {
-            CONTRACT_REGISTRY[domain] = parsed;
-            if (parsed.sampleData) {
-                ACTIVE_PACKAGE_DATA[domain] = parsed.sampleData;
+            const existingDomains = Object.keys(ACTIVE_PACKAGE_DATA).filter(k => k !== 'default');
+            let targetDomain = incomingDomain;
+
+            if (existingDomains.length <= 1) {
+                const existingKey = existingDomains[0] || 'default';
+                const pkgId = parsed.metadata?.packageId || parsed.metadata?.domain;
+                if (existingKey === 'default' || existingKey === incomingDomain || existingKey === pkgId || CURRENT_SPEC?.metadata?.domain === pkgId) {
+                    if (existingKey !== incomingDomain && existingKey !== 'default') {
+                        delete ACTIVE_PACKAGE_DATA[existingKey];
+                        delete CONTRACT_REGISTRY[existingKey];
+                    }
+                    targetDomain = incomingDomain;
+                }
             }
-            currentDomain = domain;
-            if (CURRENT_SPEC && CURRENT_SPEC.metadata) {
-                CURRENT_SPEC.metadata.activeDomain = domain;
+
+            delete ACTIVE_PACKAGE_DATA['default'];
+            delete CONTRACT_REGISTRY['default'];
+
+            CONTRACT_REGISTRY[targetDomain] = parsed;
+            const rows = parsed.sampleData || parsed.data || [];
+            if (rows.length > 0) {
+                const sanitized = validateAndSanitizeRows(rows, parsed.columns);
+                ACTIVE_PACKAGE_DATA[targetDomain] = sanitized;
             }
-            if (runtimeParser) {
-                runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+            currentDomain = targetDomain;
+
+            if (CURRENT_SPEC) {
+                CURRENT_SPEC.contract = parsed;
+                if (CURRENT_SPEC.metadata) {
+                    CURRENT_SPEC.metadata.activeDomain = targetDomain;
+                    CURRENT_SPEC.metadata.templateId = parsed.metadata?.templateId || targetDomain;
+                }
+                if (runtimeParser) {
+                    runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+                }
+            } else {
+                const autoSpec = autoGenerateSpecFromContract(parsed, targetDomain);
+                applyCompleteSpec(autoSpec);
             }
             return true;
         }
 
+        // 3. Raw Data Records (.data or .json)
         const rows = Array.isArray(parsed) ? parsed : (parsed.data || parsed.sampleData || []);
         if (rows.length > 0) {
-            ACTIVE_PACKAGE_DATA[domain] = rows;
-            currentDomain = domain;
-            if (CURRENT_SPEC && CURRENT_SPEC.metadata) {
-                CURRENT_SPEC.metadata.activeDomain = domain;
-            }
-            if (runtimeParser) {
-                runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+            const targetDomain = (CONTRACT_REGISTRY[incomingDomain]) ? incomingDomain : currentDomain;
+            const activeContract = CONTRACT_REGISTRY[targetDomain] || CURRENT_SPEC?.contract;
+            
+            const verifiedRows = activeContract?.columns 
+                ? validateAndSanitizeRows(rows, activeContract.columns)
+                : rows;
+
+            delete ACTIVE_PACKAGE_DATA['default'];
+            ACTIVE_PACKAGE_DATA[targetDomain] = verifiedRows;
+            currentDomain = targetDomain;
+
+            if (CURRENT_SPEC) {
+                if (CURRENT_SPEC.metadata) {
+                    CURRENT_SPEC.metadata.activeDomain = currentDomain;
+                }
+                if (runtimeParser) {
+                    runtimeParser.hydrate(CURRENT_SPEC, ACTIVE_PACKAGE_DATA);
+                }
             }
             return true;
         }
@@ -1336,12 +1635,35 @@
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('spec')) {
             rawPayload = urlParams.get('spec');
+        } else if (urlParams.has('lz')) {
+            const decomp = (typeof LZString !== 'undefined' && LZString.decompressFromEncodedURIComponent)
+                ? LZString.decompressFromEncodedURIComponent(urlParams.get('lz'))
+                : (window.PlatformRuntime?.decompressLZString ? window.PlatformRuntime.decompressLZString(urlParams.get('lz')) : null);
+            if (decomp) {
+                try {
+                    const parsed = JSON.parse(decomp);
+                    runAsyncWithLoader(() => applyCompleteSpec(parsed), 'Loading Initial Specification...');
+                    return;
+                } catch(e) {}
+            }
         }
 
         if (!rawPayload && window.location.hash) {
             const hash = window.location.hash;
             if (hash.includes('spec=')) {
                 rawPayload = hash.split('spec=')[1].split('&')[0];
+            } else if (hash.includes('lz=')) {
+                const rawLz = hash.split('lz=')[1].split('&')[0];
+                const decomp = (typeof LZString !== 'undefined' && LZString.decompressFromEncodedURIComponent) 
+                    ? LZString.decompressFromEncodedURIComponent(rawLz) 
+                    : (window.PlatformRuntime?.decompressLZString ? window.PlatformRuntime.decompressLZString(rawLz) : null);
+                if (decomp) {
+                    try {
+                        const parsed = JSON.parse(decomp);
+                        runAsyncWithLoader(() => applyCompleteSpec(parsed), 'Loading Initial Specification...');
+                        return;
+                    } catch(e) {}
+                }
             } else if (hash.length > 2) {
                 rawPayload = hash.substring(1);
             }
@@ -1354,25 +1676,30 @@
             const cleanPayload = decodeURIComponent(rawPayload).trim();
 
             try {
-                let b64 = cleanPayload.replace(/-/g, '+').replace(/_/g, '/');
-                while (b64.length % 4 !== 0) b64 += '=';
-                jsonString = decodeURIComponent(escape(atob(b64)));
+                JSON.parse(cleanPayload);
+                jsonString = cleanPayload;
             } catch (e) {
                 jsonString = null;
             }
 
-            if (!jsonString && typeof LZString !== 'undefined') {
+            if (!jsonString) {
                 try {
-                    jsonString = LZString.decompressFromEncodedURIComponent(cleanPayload);
+                    let b64 = cleanPayload.replace(/-/g, '+').replace(/_/g, '/');
+                    while (b64.length % 4 !== 0) b64 += '=';
+                    jsonString = decodeURIComponent(escape(atob(b64)));
+                    JSON.parse(jsonString);
                 } catch (e) {
                     jsonString = null;
                 }
             }
 
-            if (!jsonString) {
+            if (!jsonString && typeof LZString !== 'undefined') {
                 try {
-                    JSON.parse(cleanPayload);
-                    jsonString = cleanPayload;
+                    const decomp = LZString.decompressFromEncodedURIComponent(cleanPayload);
+                    if (decomp) {
+                        JSON.parse(decomp);
+                        jsonString = decomp;
+                    }
                 } catch (e) {
                     jsonString = null;
                 }
@@ -1389,6 +1716,11 @@
         }
     }
 
+    window.hydrateDashboard = applyCompleteSpec;
+    window.renderDashboard = applyCompleteSpec;
+    window.applyDashboardSpec = applyCompleteSpec;
+    window.loadDashboardSpec = applyCompleteSpec;
+
     window.addEventListener('DOMContentLoaded', () => {
         runtimeParser = new DashboardRuntimeParser({ isProductionMode: IS_PRODUCTION_MODE });
         loadSpecFromUrl();
@@ -1404,7 +1736,9 @@
                     reader.onload = (evt) => {
                         runAsyncWithLoader(() => {
                             const rawText = evt.target.result || "";
-                            const sanitizedText = String(rawText).replace(/,\s*"\[<DATE>\]"\s*:\s*"[^"]*"/g, '');
+                            const sanitizedText = String(rawText)
+                                .replace(/,\s*"\[<DATE>\]"\s*:\s*"[^"]*"/g, '')
+                                .replace(/,\s*([\]}])/g, '$1');
                             const parsed = JSON.parse(sanitizedText);
                             processIncomingPayloadGeneric(parsed, file.name);
                         }, `Hydrating ${file.name}...`);
@@ -1415,12 +1749,41 @@
             });
         }
 
+        window.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        });
+
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const files = Array.from(e.dataTransfer?.files || []);
+            if (files.length === 0) return;
+
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    runAsyncWithLoader(() => {
+                        const rawText = evt.target.result || "";
+                        const sanitizedText = String(rawText)
+                            .replace(/,\s*"\[<DATE>\]"\s*:\s*"[^"]*"/g, '')
+                            .replace(/,\s*([\]}])/g, '$1');
+                        const parsed = JSON.parse(sanitizedText);
+                        processIncomingPayloadGeneric(parsed, file.name);
+                    }, `Hydrating ${file.name}...`);
+                };
+                reader.readAsText(file);
+            });
+        });
+
         const pasteBtn = document.getElementById('pasteSpecBtn');
         if (pasteBtn) {
             pasteBtn.addEventListener('click', async () => {
                 try {
                     const clipboardText = await navigator.clipboard.readText();
-                    const parsed = JSON.parse(clipboardText);
+                    const cleaned = clipboardText.replace(/,\s*([\]}])/g, '$1');
+                    const parsed = JSON.parse(cleaned);
                     runAsyncWithLoader(() => {
                         applyCompleteSpec(parsed);
                     }, 'Compiling Dashboard Specification...');
@@ -1428,7 +1791,8 @@
                     const manualText = prompt("Paste your dashboard-spec.json specification here:");
                     if (manualText) {
                         try {
-                            const parsed = JSON.parse(manualText);
+                            const cleaned = manualText.replace(/,\s*([\]}])/g, '$1');
+                            const parsed = JSON.parse(cleaned);
                             runAsyncWithLoader(() => {
                                 applyCompleteSpec(parsed);
                             }, 'Compiling Dashboard Specification...');
