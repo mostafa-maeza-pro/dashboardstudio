@@ -1500,6 +1500,352 @@ function initCriteriaPopover(options = {}) {
         renderCriteriaPopover(crit, isInit, { contractRegistry, contractSchema });
     };
 }
+
+
+// ============================================================================
+// 9.7 NATIVE UNIVERSAL DATAGRID & MULTI-DOMAIN TAB ENGINE (PHASE 3)
+// ============================================================================
+
+window.domainTableStates = window.domainTableStates || {};
+const _gridRegistry = {};
+
+function getDomainState(domain) {
+    if (!window.domainTableStates[domain]) {
+        window.domainTableStates[domain] = { sortKey: '', sortDir: 1, aggregates: {}, searchTerm: '' };
+    }
+    return window.domainTableStates[domain];
+}
+
+function computeGridAggregate(data, col, type) {
+    if (type === 'OFF' || !type) return '-';
+    if (type === 'COUNT') return data.length.toLocaleString();
+
+    const vals = data.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));
+    if (vals.length === 0) return '0.00';
+
+    if (type === 'SUM') {
+        const sum = vals.reduce((a, b) => a + b, 0);
+        return sum.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    if (type === 'AVG') {
+        const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        return avg.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    return '-';
+}
+
+function renderDataGrid(options = {}) {
+    const {
+        outletId = 'ui-data-matrix-table-outlet',
+        componentId = 'table-positions-matrix',
+        title = 'Detailed Record Matrix',
+        isExpandable = true
+    } = options;
+
+    const container = document.getElementById(outletId);
+    if (!container) return;
+
+    // Normalize domains (Supports single domain OR superposed multi-domain array)
+    let domainConfigs = [];
+    if (Array.isArray(options.domains) && options.domains.length > 0) {
+        domainConfigs = options.domains;
+    } else if (options.domain) {
+        domainConfigs = [{
+            domain: options.domain,
+            label: options.label || options.domain,
+            columns: options.columns,
+            data: options.data || []
+        }];
+    }
+
+    if (domainConfigs.length === 0) return;
+
+    // Store configuration for re-rendering during user interactions
+    if (!_gridRegistry[componentId]) {
+        _gridRegistry[componentId] = {
+            outletId,
+            componentId,
+            title,
+            isExpandable,
+            activeDomain: domainConfigs[0].domain,
+            configs: domainConfigs
+        };
+    } else {
+        _gridRegistry[componentId].configs = domainConfigs;
+    }
+
+    const reg = _gridRegistry[componentId];
+    const currentConfig = reg.configs.find(c => c.domain === reg.activeDomain) || reg.configs[0];
+    const domain = currentConfig.domain;
+    const state = getDomainState(domain);
+
+    let rawData = currentConfig.data || [];
+
+    // Search filter
+    if (state.searchTerm) {
+        const term = state.searchTerm.toLowerCase();
+        rawData = rawData.filter(row => {
+            return Object.values(row).some(v => String(v).toLowerCase().includes(term));
+        });
+    }
+
+    // Sort
+    if (state.sortKey) {
+        rawData = [...rawData].sort((a, b) => {
+            const valA = a[state.sortKey] !== undefined ? a[state.sortKey] : '';
+            const valB = b[state.sortKey] !== undefined ? b[state.sortKey] : '';
+            if (typeof valA === 'number' && typeof valB === 'number') {
+                return (valA - valB) * state.sortDir;
+            }
+            return String(valA).localeCompare(String(valB)) * state.sortDir;
+        });
+    }
+
+    // Resolve column list (accepts Object or Array)
+    let columns = [];
+    if (Array.isArray(currentConfig.columns)) {
+        columns = currentConfig.columns.map(c => typeof c === 'object' ? (c.field || c.name || c.key) : c);
+    } else if (typeof currentConfig.columns === 'object' && currentConfig.columns !== null) {
+        columns = Object.keys(currentConfig.columns);
+    } else if (rawData.length > 0) {
+        columns = Object.keys(rawData[0]);
+    }
+
+    // 1. Build Superposed Domain Tabs (if multiple domains exist)
+    let tabsHTML = '';
+    if (reg.configs.length > 1) {
+        tabsHTML = '<div class="datagrid-domain-tabs" style="display: flex; gap: 4px; margin-right: 12px;">';
+        reg.configs.forEach(cfg => {
+            const isActive = cfg.domain === domain;
+            const activeStyle = isActive
+                ? 'background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid #38bdf8;'
+                : 'background: transparent; color: inherit; border: 1px solid rgba(125,125,125,0.2); opacity: 0.75;';
+            tabsHTML += `<button type="button" class="datagrid-domain-tab-btn ${isActive ? 'active' : ''}" data-grid-id="${componentId}" data-domain="${cfg.domain}" style="border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; ${activeStyle}">${cfg.label || cfg.domain}</button>`;
+        });
+        tabsHTML += '</div>';
+    }
+
+    // 2. Build Toolbar
+    let toolbarHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(125,125,125,0.03); border-bottom: 1px solid rgba(125,125,125,0.12); font-size: 12px; position: sticky; top: 0; z-index: 12; backdrop-filter: blur(8px);">
+            <div style="display: flex; align-items: center;">
+                ${tabsHTML}
+                <span class="fx-table-count-badge" style="font-size: 0.78rem; color: inherit; opacity: 0.7; font-weight: 500;">${rawData.length} records</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" class="fx-table-filter studio-form-input" placeholder="Search records..." value="${state.searchTerm || ''}" data-grid-id="${componentId}" data-domain="${domain}" style="padding: 2px 6px; font-size: 11px; width: 160px;">
+            </div>
+        </div>
+    `;
+
+    // 3. Build Table Headers
+    let theadHTML = `
+        <thead style="position: sticky; top: 31px; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-bottom: 1px solid rgba(125,125,125,0.2);">
+            <tr>
+    `;
+    columns.forEach(col => {
+        const isSorted = state.sortKey === col;
+        const icon = isSorted ? (state.sortDir === 1 ? '▲' : '▼') : '⇅';
+        const opacity = isSorted ? '1' : '0.4';
+        const color = isSorted ? '#38bdf8' : 'inherit';
+        theadHTML += `<th data-grid-id="${componentId}" data-domain="${domain}" data-sort="${col}" style="padding: 6px 12px; text-align: left; cursor: pointer; color: ${color}; white-space: nowrap; font-size: 11px;">${col} <span class="sort-icon" style="opacity: ${opacity}; font-size: 10px; margin-left: 4px;">${icon}</span></th>`;
+    });
+    theadHTML += `</tr></thead>`;
+
+    // 4. Build Table Body
+    let tbodyHTML = '<tbody>';
+    if (rawData.length === 0) {
+        tbodyHTML += `<tr><td colspan="${columns.length}" style="text-align: center; padding: 24px; opacity: 0.6; font-size: 12px;">No matching records found.</td></tr>`;
+    } else {
+        rawData.forEach(row => {
+            tbodyHTML += '<tr style="border-bottom: 1px solid rgba(125,125,125,0.1);">';
+            columns.forEach(col => {
+                let val = row[col];
+                if (val === undefined || val === null) val = '';
+                if (typeof val === 'number' && !col.toLowerCase().includes('id') && !col.toLowerCase().includes('date')) {
+                    val = val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+                }
+                tbodyHTML += `<td style="padding: 8px 12px; white-space: nowrap; font-size: 12px;">${val}</td>`;
+            });
+            tbodyHTML += '</tr>';
+        });
+    }
+    tbodyHTML += '</tbody>';
+
+    // 5. Build Table Footer Aggregates
+    let tfootHTML = `
+        <tfoot style="position: sticky; bottom: 0; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-top: 1px solid rgba(125,125,125,0.2);">
+            <tr>
+    `;
+    columns.forEach((col, idx) => {
+        if (idx === 0) {
+            tfootHTML += `<td style="padding: 8px 12px;"></td>`;
+        } else {
+            const aggType = state.aggregates[col] || 'OFF';
+            const aggResult = computeGridAggregate(rawData, col, aggType);
+            const pillHTML = aggType === 'OFF'
+                ? `<span class="agg-result-pill" style="opacity: 0.35; font-family: monospace; cursor: pointer;">-</span>`
+                : `<button type="button" class="agg-result-pill" style="background: rgba(125, 125, 125, 0.08); border: none; font-weight: 700; color: inherit; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${aggResult}</button>`;
+
+            let selectHTML = `<select class="agg-col-select" data-grid-id="${componentId}" data-domain="${domain}" data-col="${col}" style="display: none; font-size: 10px; padding: 2px; border-radius: 4px;">`;
+            ['OFF', 'SUM', 'AVG', 'COUNT'].forEach(opt => {
+                selectHTML += `<option value="${opt}" ${opt === aggType ? 'selected' : ''}>${opt}</option>`;
+            });
+            selectHTML += `</select>`;
+
+            tfootHTML += `<td style="padding: 8px 12px; font-size: 12px;">${pillHTML}${selectHTML}</td>`;
+        }
+    });
+    tfootHTML += `</tr></tfoot>`;
+
+    // 6. Wrap in Dataset Box
+    const tableHTML = `
+        <div class="chart-dataset-table-box" style="overflow: auto; width: 100%; min-height: 520px; max-height: 600px; border: 1px solid rgba(125,125,125,0.12); border-radius: 6px;">
+            ${toolbarHTML}
+            <table class="studio-data-table" style="width: 100%; border-collapse: collapse; table-layout: auto;">
+                ${theadHTML}
+                ${tbodyHTML}
+                ${tfootHTML}
+            </table>
+        </div>
+    `;
+
+    // 7. Inject into Chassis
+    let chassisNode = container.querySelector(`[data-component-target="${componentId}"]`)?.closest('.ui-proposal-chassis');
+    if (!chassisNode && typeof createChassisComponent === 'function') {
+        container.innerHTML = '';
+        chassisNode = createChassisComponent(title, tableHTML, isExpandable, componentId, false, false);
+        const bodyElem = chassisNode.querySelector('.ui-chassis-body');
+        if (bodyElem) {
+            bodyElem.style.padding = '8px 20px';
+            bodyElem.style.width = '100%';
+            bodyElem.style.boxSizing = 'border-box';
+        }
+        container.appendChild(chassisNode);
+    } else {
+        const bodyElem = chassisNode ? chassisNode.querySelector('.ui-chassis-body') : container;
+        if (bodyElem) bodyElem.innerHTML = tableHTML;
+    }
+
+    // 8. Synchronize with Enlarged Modal if open
+    const modal = document.getElementById('ui-global-enlargement-modal');
+    if (modal && (modal.classList.contains('is-active') || modal.classList.contains('active') || modal.offsetWidth > 0)) {
+        const titleObj = modal.querySelector('#ui-modal-title-text');
+        if (titleObj && titleObj.textContent === title) {
+            const mBody = document.getElementById('ui-modal-body-content');
+            if (mBody) mBody.innerHTML = tableHTML;
+        }
+    }
+}
+
+// Global Event Delegation for all DataGrids (Initialized Once)
+if (typeof document !== 'undefined' && !window._gridEventsBound) {
+    window._gridEventsBound = true;
+
+    // 1. Tab Switching
+    document.addEventListener('click', (e) => {
+        const tabBtn = e.target.closest('.datagrid-domain-tab-btn');
+        if (tabBtn) {
+            const gridId = tabBtn.getAttribute('data-grid-id');
+            const targetDomain = tabBtn.getAttribute('data-domain');
+            if (gridId && _gridRegistry[gridId]) {
+                _gridRegistry[gridId].activeDomain = targetDomain;
+                renderDataGrid(_gridRegistry[gridId]);
+            }
+            return;
+        }
+
+        // 2. Column Sorting
+        const th = e.target.closest('th[data-sort]');
+        if (th) {
+            const gridId = th.getAttribute('data-grid-id');
+            const domain = th.getAttribute('data-domain');
+            const sortKey = th.getAttribute('data-sort');
+            const state = getDomainState(domain);
+
+            if (state.sortKey === sortKey) {
+                state.sortDir *= -1;
+            } else {
+                state.sortKey = sortKey;
+                state.sortDir = 1;
+            }
+
+            if (gridId && _gridRegistry[gridId]) {
+                renderDataGrid(_gridRegistry[gridId]);
+            }
+            return;
+        }
+
+        // 3. Aggregate Pill Toggle
+        const pill = e.target.closest('.agg-result-pill');
+        if (pill) {
+            pill.style.display = 'none';
+            const sel = pill.nextElementSibling;
+            if (sel && sel.classList.contains('agg-col-select')) {
+                sel.style.display = 'inline-block';
+                sel.focus();
+            }
+        }
+    });
+
+    // 4. Aggregate Value Selection
+    document.addEventListener('change', (e) => {
+        if (e.target.classList.contains('agg-col-select')) {
+            const gridId = e.target.getAttribute('data-grid-id');
+            const domain = e.target.getAttribute('data-domain');
+            const col = e.target.getAttribute('data-col');
+            const val = e.target.value;
+
+            const state = getDomainState(domain);
+            state.aggregates[col] = val;
+
+            e.target.style.display = 'none';
+            if (gridId && _gridRegistry[gridId]) {
+                renderDataGrid(_gridRegistry[gridId]);
+            }
+        }
+    });
+
+    // 5. Aggregate Theme & Blur Handlers
+    document.addEventListener('focusin', (e) => {
+        if (e.target.classList.contains('agg-col-select')) {
+            const isLight = document.body.classList.contains('light-mode');
+            e.target.style.backgroundColor = isLight ? '#ffffff' : '#0f172a';
+            e.target.style.color = isLight ? '#0f172a' : '#f8fafc';
+            e.target.style.border = isLight ? '1px solid #94a3b8' : '1px solid #38bdf8';
+        }
+    });
+
+    document.addEventListener('blur', (e) => {
+        if (e.target.classList.contains('agg-col-select')) {
+            e.target.style.display = 'none';
+            const pill = e.target.previousElementSibling;
+            if (pill) pill.style.display = 'inline-block';
+        }
+    }, true);
+
+    // 6. Search Filter Typing with Focus Preservation
+    document.addEventListener('input', (e) => {
+        if (e.target.classList.contains('fx-table-filter')) {
+            const gridId = e.target.getAttribute('data-grid-id');
+            const domain = e.target.getAttribute('data-domain');
+            const state = getDomainState(domain);
+            state.searchTerm = e.target.value.toLowerCase();
+
+            const cursorPos = e.target.selectionStart;
+
+            if (gridId && _gridRegistry[gridId]) {
+                renderDataGrid(_gridRegistry[gridId]);
+                const refreshedInp = document.querySelector(`.fx-table-filter[data-grid-id="${gridId}"][data-domain="${domain}"]`);
+                if (refreshedInp && document.activeElement !== refreshedInp) {
+                    refreshedInp.focus();
+                    refreshedInp.setSelectionRange(cursorPos, cursorPos);
+                }
+            }
+        }
+    });
+}
 // ============================================================================
 // 10. PUBLIC PLATFORM RUNTIME API EXPOSURE
 // ============================================================================
@@ -1522,7 +1868,8 @@ window.PlatformRuntime = {
     parseUrlHashSpec,
     initFromUrlHash,
     initPlatform,
-    initCriteriaPopover
+    initCriteriaPopover,
+    getDomainState
 };
 
 // Declares PlatformRuntime in top-level scope to prevent ReferenceError
