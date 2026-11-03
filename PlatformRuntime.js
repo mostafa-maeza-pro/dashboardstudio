@@ -1545,7 +1545,6 @@ function renderDataGrid(options = {}) {
     const container = document.getElementById(outletId);
     if (!container) return;
 
-    // Normalize domains (Supports single domain OR superposed multi-domain array)
     let domainConfigs = [];
     if (Array.isArray(options.domains) && options.domains.length > 0) {
         domainConfigs = options.domains;
@@ -1560,7 +1559,6 @@ function renderDataGrid(options = {}) {
 
     if (domainConfigs.length === 0) return;
 
-    // Store configuration for re-rendering during user interactions
     if (!_gridRegistry[componentId]) {
         _gridRegistry[componentId] = {
             outletId,
@@ -1581,15 +1579,11 @@ function renderDataGrid(options = {}) {
 
     let rawData = currentConfig.data || [];
 
-    // Search filter
     if (state.searchTerm) {
         const term = state.searchTerm.toLowerCase();
-        rawData = rawData.filter(row => {
-            return Object.values(row).some(v => String(v).toLowerCase().includes(term));
-        });
+        rawData = rawData.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(term)));
     }
 
-    // Sort
     if (state.sortKey) {
         rawData = [...rawData].sort((a, b) => {
             const valA = a[state.sortKey] !== undefined ? a[state.sortKey] : '';
@@ -1601,7 +1595,6 @@ function renderDataGrid(options = {}) {
         });
     }
 
-    // Resolve column list (accepts Object or Array)
     let columns = [];
     if (Array.isArray(currentConfig.columns)) {
         columns = currentConfig.columns.map(c => typeof c === 'object' ? (c.field || c.name || c.key) : c);
@@ -1611,7 +1604,6 @@ function renderDataGrid(options = {}) {
         columns = Object.keys(rawData[0]);
     }
 
-    // 1. Build Superposed Domain Tabs (if multiple domains exist)
     let tabsHTML = '';
     if (reg.configs.length > 1) {
         tabsHTML = '<div class="datagrid-domain-tabs" style="display: flex; gap: 4px; margin-right: 12px;">';
@@ -1625,7 +1617,6 @@ function renderDataGrid(options = {}) {
         tabsHTML += '</div>';
     }
 
-    // 2. Build Toolbar
     let toolbarHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(125,125,125,0.03); border-bottom: 1px solid rgba(125,125,125,0.12); font-size: 12px; position: sticky; top: 0; z-index: 12; backdrop-filter: blur(8px);">
             <div style="display: flex; align-items: center;">
@@ -1639,7 +1630,6 @@ function renderDataGrid(options = {}) {
         </div>
     `;
 
-    // 3. Build Table Headers
     let theadHTML = `
         <thead style="position: sticky; top: 31px; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-bottom: 1px solid rgba(125,125,125,0.2);">
             <tr>
@@ -1653,7 +1643,6 @@ function renderDataGrid(options = {}) {
     });
     theadHTML += `</tr></thead>`;
 
-    // 4. Build Table Body
     let tbodyHTML = '<tbody>';
     if (rawData.length === 0) {
         tbodyHTML += `<tr><td colspan="${columns.length}" style="text-align: center; padding: 24px; opacity: 0.6; font-size: 12px;">No matching records found.</td></tr>`;
@@ -1673,7 +1662,6 @@ function renderDataGrid(options = {}) {
     }
     tbodyHTML += '</tbody>';
 
-    // 5. Build Table Footer Aggregates
     let tfootHTML = `
         <tfoot style="position: sticky; bottom: 0; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-top: 1px solid rgba(125,125,125,0.2);">
             <tr>
@@ -1699,7 +1687,6 @@ function renderDataGrid(options = {}) {
     });
     tfootHTML += `</tr></tfoot>`;
 
-    // 6. Wrap in Dataset Box
     const tableHTML = `
         <div class="chart-dataset-table-box" style="overflow: auto; width: 100%; min-height: 520px; max-height: 600px; border: 1px solid rgba(125,125,125,0.12); border-radius: 6px;">
             ${toolbarHTML}
@@ -1711,8 +1698,7 @@ function renderDataGrid(options = {}) {
         </div>
     `;
 
-    // 7. Inject into Chassis
-    let chassisNode = container.querySelector(`[data-component-target="${componentId}"]`)?.closest('.ui-proposal-chassis');
+    let chassisNode = container.querySelector('.ui-proposal-chassis');
     if (!chassisNode && typeof createChassisComponent === 'function') {
         container.innerHTML = '';
         chassisNode = createChassisComponent(title, tableHTML, isExpandable, componentId, false, false);
@@ -1728,7 +1714,6 @@ function renderDataGrid(options = {}) {
         if (bodyElem) bodyElem.innerHTML = tableHTML;
     }
 
-    // 8. Synchronize with Enlarged Modal if open
     const modal = document.getElementById('ui-global-enlargement-modal');
     if (modal && (modal.classList.contains('is-active') || modal.classList.contains('active') || modal.offsetWidth > 0)) {
         const titleObj = modal.querySelector('#ui-modal-title-text');
@@ -1739,11 +1724,9 @@ function renderDataGrid(options = {}) {
     }
 }
 
-// Global Event Delegation for all DataGrids (Initialized Once)
 if (typeof document !== 'undefined' && !window._gridEventsBound) {
     window._gridEventsBound = true;
 
-    // 1. Tab Switching
     document.addEventListener('click', (e) => {
         const tabBtn = e.target.closest('.datagrid-domain-tab-btn');
         if (tabBtn) {
@@ -1756,7 +1739,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
             return;
         }
 
-        // 2. Column Sorting
         const th = e.target.closest('th[data-sort]');
         if (th) {
             const gridId = th.getAttribute('data-grid-id');
@@ -1764,20 +1746,13 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
             const sortKey = th.getAttribute('data-sort');
             const state = getDomainState(domain);
 
-            if (state.sortKey === sortKey) {
-                state.sortDir *= -1;
-            } else {
-                state.sortKey = sortKey;
-                state.sortDir = 1;
-            }
+            state.sortDir = (state.sortKey === sortKey) ? state.sortDir * -1 : 1;
+            state.sortKey = sortKey;
 
-            if (gridId && _gridRegistry[gridId]) {
-                renderDataGrid(_gridRegistry[gridId]);
-            }
+            if (gridId && _gridRegistry[gridId]) renderDataGrid(_gridRegistry[gridId]);
             return;
         }
 
-        // 3. Aggregate Pill Toggle
         const pill = e.target.closest('.agg-result-pill');
         if (pill) {
             pill.style.display = 'none';
@@ -1789,25 +1764,18 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 
-    // 4. Aggregate Value Selection
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const gridId = e.target.getAttribute('data-grid-id');
             const domain = e.target.getAttribute('data-domain');
             const col = e.target.getAttribute('data-col');
-            const val = e.target.value;
-
             const state = getDomainState(domain);
-            state.aggregates[col] = val;
-
+            state.aggregates[col] = e.target.value;
             e.target.style.display = 'none';
-            if (gridId && _gridRegistry[gridId]) {
-                renderDataGrid(_gridRegistry[gridId]);
-            }
+            if (gridId && _gridRegistry[gridId]) renderDataGrid(_gridRegistry[gridId]);
         }
     });
 
-    // 5. Aggregate Theme & Blur Handlers
     document.addEventListener('focusin', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const isLight = document.body.classList.contains('light-mode');
@@ -1825,14 +1793,12 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     }, true);
 
-    // 6. Search Filter Typing with Focus Preservation
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fx-table-filter')) {
             const gridId = e.target.getAttribute('data-grid-id');
             const domain = e.target.getAttribute('data-domain');
             const state = getDomainState(domain);
             state.searchTerm = e.target.value.toLowerCase();
-
             const cursorPos = e.target.selectionStart;
 
             if (gridId && _gridRegistry[gridId]) {
@@ -1869,7 +1835,8 @@ window.PlatformRuntime = {
     initFromUrlHash,
     initPlatform,
     initCriteriaPopover,
-    getDomainState
+    renderDataGrid,
+    getDomainStat
 };
 
 // Declares PlatformRuntime in top-level scope to prevent ReferenceError
