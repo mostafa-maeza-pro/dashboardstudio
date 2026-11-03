@@ -1142,43 +1142,71 @@ if (typeof window !== 'undefined') {
     });
 }
 
-PlatformRuntime.initPlatform = function({
-    isProduction = false,
-    contractRegistry = {},
-    contractSchema = {},
-    activeDataBuffer = {},
-    onHydrate = () => {},
-    fetchCalypsoFn = null
-}) {
-    // 1. Zone 1 Visibility
+// ============================================================================
+// 9.5 NATIVE PLATFORM INGESTION & BOOTSTRAP ENGINE
+// ============================================================================
+
+function initPlatform(options = {}) {
+    const {
+        isProduction = false,
+        contractRegistry = {},
+        contractSchema = {},
+        activeDataBuffer = {},
+        onHydrate = () => {},
+        fetchCalypsoFn = null
+    } = options;
+
+    // 1. Zone 1 Visibility & Dual-Mode Routing
     const adminHeader = document.getElementById('platformAdminBar');
-    if (isProduction && adminHeader) {
-        adminHeader.style.display = 'none';
-        if (typeof fetchCalypsoFn === 'function') fetchCalypsoFn();
+    if (isProduction) {
+        if (adminHeader) adminHeader.style.display = 'none';
+        if (typeof fetchCalypsoFn === 'function') {
+            fetchCalypsoFn();
+        }
         return;
     }
 
     // 2. Generic Ingestion Processor
     function processPayload(parsed) {
         if (!parsed) return false;
-        const targetPackage = contractSchema.metadata?.packageId;
-        if (targetPackage && parsed.metadata?.packageId !== targetPackage) return false;
-        if (!targetPackage && contractSchema.metadata?.signature && 
-            parsed.metadata?.signature !== contractSchema.metadata?.signature) return false;
 
-        const templateId = parsed.metadata?.templateId || parsed.metadata?.domain;
-        if (templateId && activeDataBuffer[templateId]) {
+        // Package / Signature Validation
+        const targetPackage = contractSchema?.metadata?.packageId;
+        if (targetPackage && parsed.metadata?.packageId !== targetPackage) {
+            return false;
+        }
+        if (!targetPackage && contractSchema?.metadata?.signature && 
+            parsed.metadata?.signature !== contractSchema.metadata.signature) {
+            return false;
+        }
+
+        // Primary Match: Template ID or Domain Key
+        const templateId = parsed.metadata?.templateId || parsed.metadata?.domain || parsed.metadata?.semanticDomain;
+        if (templateId && activeDataBuffer[templateId] !== undefined) {
             activeDataBuffer[templateId] = parsed.sampleData || parsed.data || [];
             return true;
         }
 
-        // Schema key intersection fallback
-        const incomingSample = (parsed.sampleData || parsed.data || [])[0] || {};
-        const incomingKeys = Object.keys(incomingSample);
-        let bestDomain = null, maxOverlap = 0;
+        // Secondary Match: Multi-Domain Bundle Keys
+        let matchedBundle = false;
+        Object.keys(contractRegistry || {}).forEach(dom => {
+            if (parsed[dom] && Array.isArray(parsed[dom])) {
+                activeDataBuffer[dom] = parsed[dom];
+                matchedBundle = true;
+            }
+        });
+        if (matchedBundle) return true;
 
-        for (const [dom, contract] of Object.entries(contractRegistry)) {
-            const schemaCols = (contract.columns || []).map(c => c.field || c.name);
+        // Fallback: Schema Column Key Overlap
+        const incomingRecords = parsed.sampleData || parsed.data || (Array.isArray(parsed) ? parsed : []);
+        const incomingSample = incomingRecords[0] || {};
+        const incomingKeys = Object.keys(incomingSample);
+        let bestDomain = null;
+        let maxOverlap = 0;
+
+        for (const [dom, contract] of Object.entries(contractRegistry || {})) {
+            if (!contract) continue;
+            const schemaCols = (contract.columns || []).map(c => c.field || c.name || c.key);
             const overlap = incomingKeys.filter(k => schemaCols.includes(k)).length;
             if (overlap > maxOverlap) {
                 maxOverlap = overlap;
@@ -1187,38 +1215,58 @@ PlatformRuntime.initPlatform = function({
         }
 
         if (bestDomain && maxOverlap > 0) {
-            activeDataBuffer[bestDomain] = parsed.sampleData || parsed.data || [];
+            activeDataBuffer[bestDomain] = incomingRecords;
             return true;
         }
+
+        // Single Contract Fallback
+        if (contractSchema && !Object.keys(contractRegistry || {}).length) {
+            const schemaCols = (contractSchema.columns || []).map(c => c.field || c.name || c.key);
+            const overlap = incomingKeys.filter(k => schemaCols.includes(k)).length;
+            if (overlap > 0) {
+                const singleKey = contractSchema.metadata?.templateId || contractSchema.metadata?.domain || 'default';
+                activeDataBuffer[singleKey] = incomingRecords;
+                return true;
+            }
+        }
+
         return false;
     }
 
-    // 3. File Input Listener
+    // 3. Multi-File Batch devFileInput Listener
     const fileInput = document.getElementById('devFileInput');
     if (fileInput) {
         fileInput.addEventListener('change', async function(e) {
             const files = Array.from(e.target.files || []);
             if (!files.length) return;
-            let success = false;
+
+            let anySuccess = false;
             for (const file of files) {
                 try {
                     const text = await file.text();
-                    if (processPayload(JSON.parse(text))) success = true;
+                    const parsed = JSON.parse(text);
+                    if (processPayload(parsed)) {
+                        anySuccess = true;
+                    }
                 } catch (err) {
-                    console.warn("Parse error: " + file.name, err);
+                    console.warn("Failed to parse file: " + file.name, err);
                 }
             }
-            if (success) {
-                onHydrate(activeDataBuffer);
+
+            if (anySuccess) {
+                if (typeof onHydrate === 'function') {
+                    onHydrate(activeDataBuffer);
+                }
             } else {
                 alert("Layout violation: Requested operation breaches structural specifications.");
             }
+
             e.target.value = '';
         });
     }
 
     window.processIncomingPayloadGeneric = processPayload;
-};
+}
 // ============================================================================
 // 10. PUBLIC PLATFORM RUNTIME API EXPOSURE
 // ============================================================================
