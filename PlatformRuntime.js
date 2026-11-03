@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V2.04
+ * PlatformRuntime.js V3.00
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
  */
