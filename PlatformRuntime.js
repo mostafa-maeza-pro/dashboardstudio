@@ -1142,6 +1142,83 @@ if (typeof window !== 'undefined') {
     });
 }
 
+PlatformRuntime.initPlatform = function({
+    isProduction = false,
+    contractRegistry = {},
+    contractSchema = {},
+    activeDataBuffer = {},
+    onHydrate = () => {},
+    fetchCalypsoFn = null
+}) {
+    // 1. Zone 1 Visibility
+    const adminHeader = document.getElementById('platformAdminBar');
+    if (isProduction && adminHeader) {
+        adminHeader.style.display = 'none';
+        if (typeof fetchCalypsoFn === 'function') fetchCalypsoFn();
+        return;
+    }
+
+    // 2. Generic Ingestion Processor
+    function processPayload(parsed) {
+        if (!parsed) return false;
+        const targetPackage = contractSchema.metadata?.packageId;
+        if (targetPackage && parsed.metadata?.packageId !== targetPackage) return false;
+        if (!targetPackage && contractSchema.metadata?.signature && 
+            parsed.metadata?.signature !== contractSchema.metadata?.signature) return false;
+
+        const templateId = parsed.metadata?.templateId || parsed.metadata?.domain;
+        if (templateId && activeDataBuffer[templateId]) {
+            activeDataBuffer[templateId] = parsed.sampleData || parsed.data || [];
+            return true;
+        }
+
+        // Schema key intersection fallback
+        const incomingSample = (parsed.sampleData || parsed.data || [])[0] || {};
+        const incomingKeys = Object.keys(incomingSample);
+        let bestDomain = null, maxOverlap = 0;
+
+        for (const [dom, contract] of Object.entries(contractRegistry)) {
+            const schemaCols = (contract.columns || []).map(c => c.field || c.name);
+            const overlap = incomingKeys.filter(k => schemaCols.includes(k)).length;
+            if (overlap > maxOverlap) {
+                maxOverlap = overlap;
+                bestDomain = dom;
+            }
+        }
+
+        if (bestDomain && maxOverlap > 0) {
+            activeDataBuffer[bestDomain] = parsed.sampleData || parsed.data || [];
+            return true;
+        }
+        return false;
+    }
+
+    // 3. File Input Listener
+    const fileInput = document.getElementById('devFileInput');
+    if (fileInput) {
+        fileInput.addEventListener('change', async function(e) {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+            let success = false;
+            for (const file of files) {
+                try {
+                    const text = await file.text();
+                    if (processPayload(JSON.parse(text))) success = true;
+                } catch (err) {
+                    console.warn("Parse error: " + file.name, err);
+                }
+            }
+            if (success) {
+                onHydrate(activeDataBuffer);
+            } else {
+                alert("Layout violation: Requested operation breaches structural specifications.");
+            }
+            e.target.value = '';
+        });
+    }
+
+    window.processIncomingPayloadGeneric = processPayload;
+};
 // ============================================================================
 // 10. PUBLIC PLATFORM RUNTIME API EXPOSURE
 // ============================================================================
@@ -1162,5 +1239,6 @@ window.PlatformRuntime = {
     extractPreDefinedAudits,
     decompressLZString,
     parseUrlHashSpec,
-    initFromUrlHash
+    initFromUrlHash,
+    initPlatform
 };
