@@ -1268,6 +1268,239 @@ function initPlatform(options = {}) {
     window.processIncomingPayloadGeneric = processPayload;
 }
 // ============================================================================
+// 9.6 NATIVE CRITERIA POPOVER DECK & STATE ENGINE (PHASE 2)
+// ============================================================================
+
+let _criteriaSlideIndex = 0;
+
+function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
+    const container = document.getElementById('studio-criteria-fields-container');
+    if (!container) return;
+
+    const contractRegistry = options.contractRegistry || window.CONTRACT_REGISTRY || {};
+    const contractSchema = options.contractSchema || window.CONTRACT_SCHEMA || {};
+
+    const effectiveRegistry = Object.keys(contractRegistry).length > 0
+        ? contractRegistry
+        : (contractSchema && Object.keys(contractSchema).length > 0 
+            ? { [contractSchema.metadata?.domain || contractSchema.metadata?.templateId || 'Default']: contractSchema } 
+            : {});
+
+    // 1. Resolve Dynamic Input Parameters (Section 1)
+    const explicitParams = Array.isArray(criteria) ? criteria : [];
+    const mergedParams = mergeCriteriaParameters(explicitParams, effectiveRegistry);
+
+    // 2. Resolve Pre-Defined Audits (Section 2)
+    const auditDomainsMap = extractPreDefinedAudits({}, effectiveRegistry);
+    const domainKeys = Object.keys(auditDomainsMap);
+
+    // Helper: Map current values
+    const getValueForField = (param) => {
+        if (isInitial) return '';
+        const match = (criteria || []).find(c => (c.field || c.name) === param.field);
+        if (match && (match.value !== undefined || match.defaultValue !== undefined)) {
+            const val = match.value ?? match.defaultValue;
+            return param.widget === 'datetime-local' ? formatIsoToDatetimeLocal(val) : val;
+        }
+        const fallback = param.defaultValue ?? '';
+        return param.widget === 'datetime-local' ? formatIsoToDatetimeLocal(fallback) : fallback;
+    };
+
+    // Build Section 1: Input Parameters
+    let section1HTML = `
+        <div class="popover-primary-fields">
+            <div class="popover-section-label">
+                <div class="popover-section-title-group">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                    Input Parameters
+                </div>
+            </div>
+            <div class="popover-primary-scrollbox">
+    `;
+
+    if (mergedParams.length === 0) {
+        section1HTML += `<div style="font-size: 11px; opacity: 0.6; padding: 4px 0;">No adjustable parameters specified.</div>`;
+    } else {
+        mergedParams.forEach(p => {
+            const val = getValueForField(p);
+            section1HTML += `<div class="studio-form-group criteria-input-field">`;
+            section1HTML += `<label class="studio-form-label">${p.label || p.field}</label>`;
+
+            if (p.options && Array.isArray(p.options) && p.options.length > 0) {
+                section1HTML += `<select class="studio-form-select" data-criteria-field="${p.field}">`;
+                p.options.forEach(opt => {
+                    const optVal = typeof opt === 'object' ? opt.value : opt;
+                    const optLabel = typeof opt === 'object' ? opt.label : opt;
+                    const selected = String(optVal) === String(val) ? 'selected' : '';
+                    section1HTML += `<option value="${optVal}" ${selected}>${optLabel}</option>`;
+                });
+                section1HTML += `</select>`;
+            } else if (p.widget === 'datetime-local' || p.type === 'Datetime') {
+                section1HTML += `<input type="datetime-local" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+            } else if (p.widget === 'date' || p.type === 'Date') {
+                section1HTML += `<input type="date" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+            } else if (p.widget === 'number' || p.type === 'Number') {
+                section1HTML += `<input type="number" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+            } else {
+                section1HTML += `<input type="text" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+            }
+            section1HTML += `</div>`;
+        });
+    }
+    section1HTML += `</div></div>`;
+
+    // Build Section 2: Pre-Defined Criterias (Folded by Default + Sliding Deck)
+    let section2HTML = `
+        <div class="popover-audit-context">
+            <div class="popover-section-label">
+                <div class="popover-section-title-group">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path><line x1="12" y1="14" x2="12" y2="17"></line></svg>
+                    Pre-Defined Criterias
+                </div>
+                <button type="button" class="popover-fold-btn is-collapsed" id="studioAuditFoldBtn" title="Toggle View">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+            </div>
+            <div class="popover-audit-scrollbox is-collapsed" id="studioAuditScrollbox">
+                <div class="contract-cards-viewport" style="background: transparent !important; overflow: hidden; width: 100%;">
+                    <div class="contract-cards-track" style="background: transparent !important; display: flex; transition: transform 0.3s ease; width: 100%; transform: translateX(-${_criteriaSlideIndex * 100}%);">
+    `;
+
+    if (domainKeys.length === 0) {
+        section2HTML += `
+            <div class="contract-card-slide" style="min-width: 100%; box-sizing: border-box; background: transparent !important; border: 1px solid rgba(148, 163, 184, 0.25) !important; border-radius: 6px; padding: 10px;">
+                <div style="font-size: 11px; opacity: 0.6;">No pre-defined presets registered.</div>
+            </div>
+        `;
+    } else {
+        domainKeys.forEach((dom) => {
+            const items = auditDomainsMap[dom] || [];
+            section2HTML += `
+                <div class="contract-card-slide" style="min-width: 100%; box-sizing: border-box; background: transparent !important; border: 1px solid rgba(148, 163, 184, 0.25) !important; border-radius: 6px; padding: 10px;">
+                    <div class="contract-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.75; color: inherit;">${dom}</span>
+                        <div class="card-slider-nav" style="display: ${domainKeys.length > 1 ? 'inline-flex' : 'none'} !important; flex-direction: row !important; align-items: center !important; gap: 4px !important;">
+                            <button type="button" class="slider-prev-action" style="padding: 2px 6px; font-size: 10px; cursor: pointer;" title="Previous">&larr;</button>
+                            <button type="button" class="slider-next-action" style="padding: 2px 6px; font-size: 10px; cursor: pointer;" title="Next">&rarr;</button>
+                        </div>
+                    </div>
+                    <div class="contract-card-body" style="background: transparent !important;">
+            `;
+            if (items.length === 0) {
+                section2HTML += `<div style="font-size: 11px; opacity: 0.5;">No pre-defined audit filters.</div>`;
+            } else {
+                items.forEach(it => {
+                    section2HTML += `
+                        <div class="studio-form-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <span class="studio-form-label" style="font-size: 12px;">${it.label || it.name}</span>
+                            <span class="criteria-read-only-tag">${it.fixedValue ?? it.value ?? '-'}</span>
+                        </div>
+                    `;
+                });
+            }
+            section2HTML += `</div></div>`;
+        });
+    }
+
+    section2HTML += `</div></div></div></div>`;
+
+    container.innerHTML = section1HTML + section2HTML;
+
+    // Attach Section 2 Fold Handler
+    const foldBtn = document.getElementById('studioAuditFoldBtn');
+    const scrollbox = document.getElementById('studioAuditScrollbox');
+    if (foldBtn && scrollbox && !foldBtn.dataset.bound) {
+        foldBtn.dataset.bound = 'true';
+        foldBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isFolded = foldBtn.classList.toggle('is-collapsed');
+            scrollbox.classList.toggle('is-collapsed', isFolded);
+        });
+    }
+
+    // Attach Slide Navigation Handlers
+    const viewport = container.querySelector('.contract-cards-viewport');
+    if (viewport && !viewport.dataset.bound) {
+        viewport.dataset.bound = 'true';
+        viewport.addEventListener('click', (e) => {
+            const prev = e.target.closest('.slider-prev-action');
+            const next = e.target.closest('.slider-next-action');
+            if (!prev && !next) return;
+            e.stopPropagation();
+
+            const track = viewport.querySelector('.contract-cards-track');
+            const slides = viewport.querySelectorAll('.contract-card-slide');
+            if (!track || slides.length <= 1) return;
+
+            if (next) {
+                _criteriaSlideIndex = (_criteriaSlideIndex + 1) % slides.length;
+            } else if (prev) {
+                _criteriaSlideIndex = (_criteriaSlideIndex - 1 + slides.length) % slides.length;
+            }
+            track.style.transform = `translateX(-${_criteriaSlideIndex * 100}%)`;
+        });
+    }
+}
+
+function initCriteriaPopover(options = {}) {
+    const {
+        contractRegistry = {},
+        contractSchema = {},
+        getActiveCriteria = () => [],
+        onCommit = () => {}
+    } = options;
+
+    const popoverTrigger = document.getElementById('ui-applied-criteria-trigger');
+    const popoverPanel = document.getElementById('studioCriteriaDropdown');
+    const popoverBackdrop = document.getElementById('studioPopoverBackdrop');
+    const popoverClose = document.getElementById('studioPopoverClose');
+    const popoverCancel = document.getElementById('studioPopoverCancel');
+    const popoverSubmit = document.getElementById('studioPopoverSubmit');
+
+    const render = (isInitial = false) => {
+        renderCriteriaPopover(getActiveCriteria(), isInitial, { contractRegistry, contractSchema });
+    };
+
+    const togglePopover = (show) => {
+        if (!popoverPanel || !popoverBackdrop) return;
+        const isActive = show !== undefined ? show : !popoverPanel.classList.contains('is-active');
+        popoverPanel.classList.toggle('is-active', isActive);
+        popoverBackdrop.classList.toggle('is-active', isActive);
+        if (isActive) {
+            render(false);
+        }
+    };
+
+    // Initial render (unset empty values per spec)
+    render(true);
+
+    if (popoverTrigger) popoverTrigger.onclick = () => togglePopover(true);
+    if (popoverClose) popoverClose.onclick = () => togglePopover(false);
+    if (popoverBackdrop) popoverBackdrop.onclick = () => togglePopover(false);
+    if (popoverCancel) popoverCancel.onclick = () => togglePopover(false);
+
+    if (popoverSubmit) {
+        popoverSubmit.onclick = () => {
+            const container = document.getElementById('studio-criteria-fields-container');
+            const inputs = container ? container.querySelectorAll('[data-criteria-field]') : [];
+            const updated = [];
+            inputs.forEach(inp => {
+                const f = inp.getAttribute('data-criteria-field');
+                updated.push({ field: f, name: f, value: inp.value });
+            });
+            togglePopover(false);
+            if (typeof onCommit === 'function') {
+                onCommit(updated);
+            }
+        };
+    }
+
+    // Expose globally for backward compatibility
+    window.renderCriteriaPanel = function(crit, isInit) {
+        renderCriteriaPopover(crit, isInit, { contractRegistry, contractSchema });
+    };
+}
+// ============================================================================
 // 10. PUBLIC PLATFORM RUNTIME API EXPOSURE
 // ============================================================================
 
@@ -1288,5 +1521,9 @@ window.PlatformRuntime = {
     decompressLZString,
     parseUrlHashSpec,
     initFromUrlHash,
-    initPlatform
+    initPlatform,
+    initCriteriaPopover
 };
+
+// Declares PlatformRuntime in top-level scope to prevent ReferenceError
+var PlatformRuntime = window.PlatformRuntime;
