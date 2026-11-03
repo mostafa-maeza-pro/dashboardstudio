@@ -1836,7 +1836,7 @@ window.PlatformRuntime = {
     initPlatform,
     initCriteriaPopover,
     renderDataGrid,
-    getDomainStat
+    getDomainState
 };
 
 // Declares PlatformRuntime in top-level scope to prevent ReferenceError
