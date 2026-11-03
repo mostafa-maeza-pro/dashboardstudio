@@ -1503,7 +1503,7 @@ function initCriteriaPopover(options = {}) {
 
 
 // ============================================================================
-// 9.7 NATIVE UNIVERSAL DATAGRID & MULTI-DOMAIN TAB ENGINE (PHASE 3)
+// 9.7 NATIVE UNIVERSAL DATAGRID & MULTI-DOMAIN TAB ENGINE (PHASE 3 FIXED)
 // ============================================================================
 
 window.domainTableStates = window.domainTableStates || {};
@@ -1518,9 +1518,15 @@ function getDomainState(domain) {
 
 function computeGridAggregate(data, col, type) {
     if (type === 'OFF' || !type) return '-';
-    if (type === 'COUNT') return data.length.toLocaleString();
+    if (type === 'COUNT') return (data ? data.length : 0).toLocaleString();
 
-    const vals = data.map(r => r[col]).filter(v => typeof v === 'number' && !isNaN(v));
+    // Robust parsing: handles native numbers and stringified floats/integers
+    const vals = (data || [])
+        .map(r => r[col])
+        .filter(v => v !== null && v !== undefined && v !== '')
+        .map(v => typeof v === 'number' ? v : Number(String(v).replace(/[^0-9.-]+/g, '')))
+        .filter(v => !isNaN(v));
+
     if (vals.length === 0) return '0.00';
 
     if (type === 'SUM') {
@@ -1545,8 +1551,11 @@ function renderDataGrid(options = {}) {
     const container = document.getElementById(outletId);
     if (!container) return;
 
+    // Normalization: check configs first (from registry re-renders), then domains, then domain
     let domainConfigs = [];
-    if (Array.isArray(options.domains) && options.domains.length > 0) {
+    if (Array.isArray(options.configs) && options.configs.length > 0) {
+        domainConfigs = options.configs;
+    } else if (Array.isArray(options.domains) && options.domains.length > 0) {
         domainConfigs = options.domains;
     } else if (options.domain) {
         domainConfigs = [{
@@ -1559,6 +1568,7 @@ function renderDataGrid(options = {}) {
 
     if (domainConfigs.length === 0) return;
 
+    // Persist registry state
     if (!_gridRegistry[componentId]) {
         _gridRegistry[componentId] = {
             outletId,
@@ -1579,11 +1589,15 @@ function renderDataGrid(options = {}) {
 
     let rawData = currentConfig.data || [];
 
+    // 1. Search Filter
     if (state.searchTerm) {
         const term = state.searchTerm.toLowerCase();
-        rawData = rawData.filter(row => Object.values(row).some(v => String(v).toLowerCase().includes(term)));
+        rawData = rawData.filter(row => {
+            return Object.values(row).some(v => String(v).toLowerCase().includes(term));
+        });
     }
 
+    // 2. Sorting
     if (state.sortKey) {
         rawData = [...rawData].sort((a, b) => {
             const valA = a[state.sortKey] !== undefined ? a[state.sortKey] : '';
@@ -1595,6 +1609,7 @@ function renderDataGrid(options = {}) {
         });
     }
 
+    // 3. Resolve Columns
     let columns = [];
     if (Array.isArray(currentConfig.columns)) {
         columns = currentConfig.columns.map(c => typeof c === 'object' ? (c.field || c.name || c.key) : c);
@@ -1604,6 +1619,7 @@ function renderDataGrid(options = {}) {
         columns = Object.keys(rawData[0]);
     }
 
+    // 4. Tab Bar (for multi-domain setups)
     let tabsHTML = '';
     if (reg.configs.length > 1) {
         tabsHTML = '<div class="datagrid-domain-tabs" style="display: flex; gap: 4px; margin-right: 12px;">';
@@ -1617,6 +1633,7 @@ function renderDataGrid(options = {}) {
         tabsHTML += '</div>';
     }
 
+    // 5. Toolbar
     let toolbarHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(125,125,125,0.03); border-bottom: 1px solid rgba(125,125,125,0.12); font-size: 12px; position: sticky; top: 0; z-index: 12; backdrop-filter: blur(8px);">
             <div style="display: flex; align-items: center;">
@@ -1630,6 +1647,7 @@ function renderDataGrid(options = {}) {
         </div>
     `;
 
+    // 6. Header
     let theadHTML = `
         <thead style="position: sticky; top: 31px; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-bottom: 1px solid rgba(125,125,125,0.2);">
             <tr>
@@ -1643,6 +1661,7 @@ function renderDataGrid(options = {}) {
     });
     theadHTML += `</tr></thead>`;
 
+    // 7. Body
     let tbodyHTML = '<tbody>';
     if (rawData.length === 0) {
         tbodyHTML += `<tr><td colspan="${columns.length}" style="text-align: center; padding: 24px; opacity: 0.6; font-size: 12px;">No matching records found.</td></tr>`;
@@ -1662,6 +1681,7 @@ function renderDataGrid(options = {}) {
     }
     tbodyHTML += '</tbody>';
 
+    // 8. Footer Aggregates
     let tfootHTML = `
         <tfoot style="position: sticky; bottom: 0; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-top: 1px solid rgba(125,125,125,0.2);">
             <tr>
@@ -1698,6 +1718,7 @@ function renderDataGrid(options = {}) {
         </div>
     `;
 
+    // 9. Mount into Chassis
     let chassisNode = container.querySelector('.ui-proposal-chassis');
     if (!chassisNode && typeof createChassisComponent === 'function') {
         container.innerHTML = '';
@@ -1714,6 +1735,7 @@ function renderDataGrid(options = {}) {
         if (bodyElem) bodyElem.innerHTML = tableHTML;
     }
 
+    // 10. Modal Sync
     const modal = document.getElementById('ui-global-enlargement-modal');
     if (modal && (modal.classList.contains('is-active') || modal.classList.contains('active') || modal.offsetWidth > 0)) {
         const titleObj = modal.querySelector('#ui-modal-title-text');
@@ -1724,9 +1746,11 @@ function renderDataGrid(options = {}) {
     }
 }
 
+// Global Event Delegation (Bound strictly once)
 if (typeof document !== 'undefined' && !window._gridEventsBound) {
     window._gridEventsBound = true;
 
+    // 1. Tab Switching
     document.addEventListener('click', (e) => {
         const tabBtn = e.target.closest('.datagrid-domain-tab-btn');
         if (tabBtn) {
@@ -1739,6 +1763,7 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
             return;
         }
 
+        // 2. Sorting
         const th = e.target.closest('th[data-sort]');
         if (th) {
             const gridId = th.getAttribute('data-grid-id');
@@ -1749,10 +1774,13 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
             state.sortDir = (state.sortKey === sortKey) ? state.sortDir * -1 : 1;
             state.sortKey = sortKey;
 
-            if (gridId && _gridRegistry[gridId]) renderDataGrid(_gridRegistry[gridId]);
+            if (gridId && _gridRegistry[gridId]) {
+                renderDataGrid(_gridRegistry[gridId]);
+            }
             return;
         }
 
+        // 3. Aggregate Pill Click (Shows Select)
         const pill = e.target.closest('.agg-result-pill');
         if (pill) {
             pill.style.display = 'none';
@@ -1764,18 +1792,24 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 
+    // 4. Aggregate Value Commit (On Change)
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const gridId = e.target.getAttribute('data-grid-id');
             const domain = e.target.getAttribute('data-domain');
             const col = e.target.getAttribute('data-col');
             const state = getDomainState(domain);
+
             state.aggregates[col] = e.target.value;
             e.target.style.display = 'none';
-            if (gridId && _gridRegistry[gridId]) renderDataGrid(_gridRegistry[gridId]);
+
+            if (gridId && _gridRegistry[gridId]) {
+                renderDataGrid(_gridRegistry[gridId]);
+            }
         }
     });
 
+    // 5. Aggregate Select Styling (Theme Adaptive)
     document.addEventListener('focusin', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const isLight = document.body.classList.contains('light-mode');
@@ -1785,14 +1819,19 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 
+    // 6. Aggregate Dismissal (On Blur with Delay to permit Change)
     document.addEventListener('blur', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
-            e.target.style.display = 'none';
-            const pill = e.target.previousElementSibling;
-            if (pill) pill.style.display = 'inline-block';
+            const sel = e.target;
+            setTimeout(() => {
+                sel.style.display = 'none';
+                const pill = sel.previousElementSibling;
+                if (pill) pill.style.display = 'inline-block';
+            }, 150);
         }
     }, true);
 
+    // 7. Search Filter Input with Focus Preservation
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fx-table-filter')) {
             const gridId = e.target.getAttribute('data-grid-id');
