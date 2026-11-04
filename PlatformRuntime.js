@@ -1965,6 +1965,7 @@ function mountCanvasShell() {
 // ============================================================================
 
 window.PlatformRuntime = {
+    mountCanvasShell,
     resolveDatasetKey,
     buildChartJsConfig,
     formatMetricValue,
@@ -1985,7 +1986,7 @@ window.PlatformRuntime = {
     initCriteriaPopover,
     renderDataGrid,
     getDomainState,
-    mountCanvasShell
+    
 };
 
 // Declares PlatformRuntime in top-level scope to prevent ReferenceError
