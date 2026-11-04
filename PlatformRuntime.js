@@ -1851,6 +1851,115 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 }
+
+
+// ============================================================================
+// 9.8 NATIVE STATIC CANVAS SHELL MOUNT ENGINE
+// ============================================================================
+
+function mountCanvasShell() {
+    if (document.getElementById('globalCanvasShell')) return; // Exit if already mounted
+
+    const shellHTML = `
+        <!-- ZONE 1: System Admin Control Bar -->
+        <header class="admin-system-header" id="platformAdminBar">
+            <div class="header-left-section">
+                <div class="header-title-block">
+                    <h2 class="platform-title">📊 Calypso Dashboard Studio</h2>
+                    <span class="platform-subtitle">AI-powered Dashboard Creation Platform</span>
+                </div>
+            </div>
+            
+            <div class="header-right-controls">
+                <div class="upload-zone">
+                    <label for="devFileInput" class="custom-file-upload">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                        Upload Data File(s)
+                    </label>
+                    <input type="file" id="devFileInput" accept=".contract,.data,.json" multiple>
+                </div>
+
+                <div class="user-menu-container" id="userMenuWrapper">
+                    <div class="user-menu-trigger" id="userMenuTrigger">
+                        <div class="user-avatar" id="userAvatarAnchor">--</div>
+                        <span class="user-name" id="userNameAnchor">Loading...</span>
+                        <svg class="dropdown-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </div>
+                    <div class="user-menu-dropdown" id="userMenuDropdown">
+                        <div class="user-menu-item" id="themeToggleBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                            Toggle Dark Mode
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ZONE 2: Overlays & Modals -->
+        <div id="studioPopoverBackdrop" class="studio-popover-backdrop"></div>
+
+        <div id="ui-global-enlargement-modal">
+            <div class="modal-container">
+                <div class="modal-header">
+                    <h3 id="ui-modal-title-text">Chart Enlargement</h3>
+                    <div class="modal-header-controls">
+                        <div class="ui-chassis-view-switch" id="modalViewSwitch">
+                            <button class="chassis-switch-btn active" data-view="visual" title="Visual Chart">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 17v-5M12 17V7M17 17v-3"/></svg>
+                            </button>
+                            <button class="chassis-switch-btn" data-view="dataset" title="Supporting Dataset">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            </button>
+                        </div>
+                        <button id="ui-modal-close-btn" title="Close Modal">&times;</button>
+                    </div>
+                </div>
+                <div id="ui-modal-body-content"></div>
+            </div>
+        </div>
+
+        <!-- ZONE 2: Main Dashboard Canvas Shell -->
+        <main id="globalCanvasShell" class="ui-global-canvas">
+            <div id="ui-section-title-anchor">
+                <div class="header-title-meta-group">
+                    <h1 class="canvas-title-header"></h1>
+                    <div class="subtitle-area-container" style="display: inline-flex; align-items: center; gap: 8px;">
+                        <p class="canvas-subtitle-header"></p>
+                        <button id="ui-applied-criteria-trigger" class="studio-discreet-subtitle-btn" title="Fetch Data & Query Parameters">
+                            <svg class="refresh-icon" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                        </button>
+
+                        <div id="studioCriteriaDropdown" class="studio-popover-panel anchored-subtitle">
+                            <div class="studio-popover-header">
+                                <h4 class="studio-popover-title">Fetch Data</h4>
+                                <button id="studioPopoverClose" class="studio-popover-close-btn" title="Close">&times;</button>
+                            </div>
+                            <div class="studio-popover-body">
+                                <div id="studio-criteria-fields-container"></div>
+                            </div>
+                            <div class="studio-popover-footer">
+                                <button id="studioPopoverCancel" class="studio-btn-secondary">Cancel</button>
+                                <button id="studioPopoverSubmit" class="studio-btn-primary">Refresh Data</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <section class="dashboard-workspace">
+                <div id="ui-kpi-grid-outlet" class="ui-workspace-section-row"></div>
+                <div id="ui-charts-container-outlet" class="ui-workspace-section-row"></div>
+                <div id="ui-data-matrix-table-outlet" class="ui-workspace-section-row"></div>
+            </section>
+        </main>
+    `;
+
+    document.body.insertAdjacentHTML('afterbegin', shellHTML);
+}
+
 // ============================================================================
 // 10. PUBLIC PLATFORM RUNTIME API EXPOSURE
 // ============================================================================
@@ -1875,7 +1984,8 @@ window.PlatformRuntime = {
     initPlatform,
     initCriteriaPopover,
     renderDataGrid,
-    getDomainState
+    getDomainState,
+    mountCanvasShell
 };
 
 // Declares PlatformRuntime in top-level scope to prevent ReferenceError
