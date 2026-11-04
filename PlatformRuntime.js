@@ -1147,6 +1147,9 @@ if (typeof window !== 'undefined') {
 // ============================================================================
 
 function initPlatform(options = {}) {
+    // 0. Auto-mount canvas shell if absent from HTML document
+    mountCanvasShell();
+    
     const {
         isProduction = false,
         contractRegistry = {},
@@ -1965,7 +1968,6 @@ function mountCanvasShell() {
 // ============================================================================
 
 window.PlatformRuntime = {
-    mountCanvasShell,
     resolveDatasetKey,
     buildChartJsConfig,
     formatMetricValue,
@@ -1986,6 +1988,7 @@ window.PlatformRuntime = {
     initCriteriaPopover,
     renderDataGrid,
     getDomainState,
+    mountCanvasShell
     
 };
 
