@@ -156,11 +156,27 @@ function formatIsoToDatetimeLocal(dateStr) {
 function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
     const paramMap = new Map();
 
+    // 1. Gather all locked/preset keys across all contracts in the registry[cite: 1, 3]
+    const presetKeys = new Set();
+    Object.values(contractRegistry || {}).forEach(contract => {
+        if (!contract) return;
+        const presets = contract.presetCriteria || contract.preDefinedParameters || contract.lockedFilters || [];
+        if (Array.isArray(presets)) {
+            presets.forEach(p => {
+                const k = (p.name || p.field || p.label || '').trim().toLowerCase();
+                if (k) presetKeys.add(k);
+            });
+        }
+    });
+
     const registerParam = (p) => {
         if (!p) return;
         const fieldKey = (p.field || p.name || p.id || '').trim();
         if (!fieldKey) return;
         const canonicalKey = fieldKey.toLowerCase();
+
+        // 2. DEFENSIVE GUARD: Reject any parameter that belongs to preset/audit criteria[cite: 3]
+        if (presetKeys.has(canonicalKey)) return;
 
         const widgetType = p.widget || (
             p.type === 'Datetime' ? 'datetime-local' :
@@ -211,7 +227,6 @@ function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
 
     return Array.from(paramMap.values());
 }
-
 function extractPreDefinedAudits(explicitAudits = {}, contractRegistry = {}) {
     const domainsMap = {};
 
