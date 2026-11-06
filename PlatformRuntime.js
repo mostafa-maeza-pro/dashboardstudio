@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V3.00
+ * PlatformRuntime.js V3.10
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
  */
@@ -14,7 +14,27 @@ function initializeThemeDefault() {
 }
 
 function extractInitials(name) { 
-    return name ? name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() : '--'; 
+    if (!name) return '--';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length > 1) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.substring(0, 2).toUpperCase();
+}
+
+function hydrateProfileIdentity(source) {
+    if (!source) return;
+    const metadata = source.metadata || source;
+    const profileName = metadata.generatedFor || metadata.userName || metadata.user || 'Authorized User';
+    const userNameElem = document.getElementById('userNameAnchor');
+    const userAvatarElem = document.getElementById('userAvatarAnchor');
+
+    if (userNameElem) {
+        userNameElem.textContent = profileName;
+    }
+    if (userAvatarElem) {
+        userAvatarElem.textContent = extractInitials(profileName);
+    }
 }
 
 function resolveDatasetKey(metadata) {
@@ -132,7 +152,7 @@ function formatInputCriteriaDateMask(dateStr) {
     if (!dateStr) return ''; 
     const d = new Date(dateStr); 
     if (!isNaN(d.getTime())) { 
-        return formatSubtitleTimestamp(d);
+        return formatSubtitleTimestamp(d); 
     } 
     return dateStr; 
 }
@@ -156,7 +176,6 @@ function formatIsoToDatetimeLocal(dateStr) {
 function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
     const paramMap = new Map();
 
-    // 1. Gather all locked/preset keys across all contracts in the registry[cite: 1, 3]
     const presetKeys = new Set();
     Object.values(contractRegistry || {}).forEach(contract => {
         if (!contract) return;
@@ -175,7 +194,6 @@ function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
         if (!fieldKey) return;
         const canonicalKey = fieldKey.toLowerCase();
 
-        // 2. DEFENSIVE GUARD: Reject any parameter that belongs to preset/audit criteria[cite: 3]
         if (presetKeys.has(canonicalKey)) return;
 
         const widgetType = p.widget || (
@@ -227,6 +245,7 @@ function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
 
     return Array.from(paramMap.values());
 }
+
 function extractPreDefinedAudits(explicitAudits = {}, contractRegistry = {}) {
     const domainsMap = {};
 
@@ -825,31 +844,37 @@ function bindModalEvents(getChartInstanceFn) {
 }
 
 // ============================================================================
-// 8. GLOBAL HEADER & THEME INTERACTION ENGINE
+// 8. GLOBAL HEADER & THEME INTERACTION ENGINE (EVENT DELEGATION ARCHITECTURE)
 // ============================================================================
 
-document.addEventListener('DOMContentLoaded', () => {
-    const userMenuTrigger = document.getElementById('userMenuTrigger');
-    const userMenuDropdown = document.getElementById('userMenuDropdown');
-
-    if (userMenuTrigger && userMenuDropdown) {
-        userMenuTrigger.addEventListener('click', (e) => {
-            e.stopPropagation();
-            userMenuDropdown.classList.toggle('active');
-        });
-
-        document.addEventListener('click', () => {
-            userMenuDropdown.classList.remove('active');
-        });
+document.addEventListener('click', (e) => {
+    // 1. User Menu Trigger Dropdown Toggle
+    const trigger = e.target.closest('#userMenuTrigger');
+    if (trigger) {
+        e.stopPropagation();
+        const dropdown = document.getElementById('userMenuDropdown');
+        if (dropdown) {
+            dropdown.classList.toggle('active');
+        }
+        return;
     }
 
-    document.addEventListener('click', (e) => {
-        const themeBtn = e.target.closest('#themeToggleBtn');
-        if (themeBtn) {
-            e.stopPropagation();
-            window.setDashboardTheme('toggle');
+    // 2. Dark/Light Mode Theme Toggle Action
+    const themeBtn = e.target.closest('#themeToggleBtn');
+    if (themeBtn) {
+        e.stopPropagation();
+        window.setDashboardTheme('toggle');
+        return;
+    }
+
+    // 3. Click-Outside Dismissal for User Menu Dropdown
+    const menuWrapper = e.target.closest('#userMenuWrapper');
+    if (!menuWrapper) {
+        const dropdown = document.getElementById('userMenuDropdown');
+        if (dropdown && dropdown.classList.contains('active')) {
+            dropdown.classList.remove('active');
         }
-    });
+    }
 });
 
 window.setDashboardTheme = function(mode = 'toggle') {
@@ -1109,6 +1134,9 @@ function initFromUrlHash() {
         window.activeDataset = spec.contract.sampleData;
     }
 
+    mountCanvasShell();
+    hydrateProfileIdentity(spec);
+
     if (typeof window.hydrateDashboard === 'function') {
         window.hydrateDashboard(spec);
     } else if (typeof window.renderDashboard === 'function') {
@@ -1174,6 +1202,14 @@ function initPlatform(options = {}) {
         fetchCalypsoFn = null
     } = options;
 
+    // 0.5. Automated Profile Hydration Anchor
+    const initialSchema = (contractSchema && Object.keys(contractSchema).length > 0)
+        ? contractSchema
+        : (Object.values(contractRegistry)[0] || window.CONTRACT_SCHEMA || null);
+    if (initialSchema) {
+        hydrateProfileIdentity(initialSchema);
+    }
+
     // 1. Zone 1 Visibility & Dual-Mode Routing
     const adminHeader = document.getElementById('platformAdminBar');
     if (isProduction) {
@@ -1196,6 +1232,11 @@ function initPlatform(options = {}) {
         if (!targetPackage && contractSchema?.metadata?.signature && 
             parsed.metadata?.signature !== contractSchema.metadata.signature) {
             return false;
+        }
+
+        // Automatic User Profile Hydration from Ingested Payload
+        if (parsed.metadata?.generatedFor) {
+            hydrateProfileIdentity(parsed);
         }
 
         // Primary Match: Template ID or Domain Key
@@ -1285,6 +1326,7 @@ function initPlatform(options = {}) {
 
     window.processIncomingPayloadGeneric = processPayload;
 }
+
 // ============================================================================
 // 9.6 NATIVE CRITERIA POPOVER DECK & STATE ENGINE (PHASE 2)
 // ============================================================================
@@ -1304,15 +1346,12 @@ function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
             ? { [contractSchema.metadata?.domain || contractSchema.metadata?.templateId || 'Default']: contractSchema } 
             : {});
 
-    // 1. Resolve Dynamic Input Parameters (Section 1)
     const explicitParams = Array.isArray(criteria) ? criteria : [];
     const mergedParams = mergeCriteriaParameters(explicitParams, effectiveRegistry);
 
-    // 2. Resolve Pre-Defined Audits (Section 2)
     const auditDomainsMap = extractPreDefinedAudits({}, effectiveRegistry);
     const domainKeys = Object.keys(auditDomainsMap);
 
-    // Helper: Map current values
     const getValueForField = (param) => {
         if (isInitial) return '';
         const match = (criteria || []).find(c => (c.field || c.name) === param.field);
@@ -1324,7 +1363,6 @@ function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
         return param.widget === 'datetime-local' ? formatIsoToDatetimeLocal(fallback) : fallback;
     };
 
-    // Build Section 1: Input Parameters
     let section1HTML = `
         <div class="popover-primary-fields">
             <div class="popover-section-label">
@@ -1367,7 +1405,6 @@ function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
     }
     section1HTML += `</div></div>`;
 
-    // Build Section 2: Pre-Defined Criterias (Folded by Default + Sliding Deck)
     let section2HTML = `
         <div class="popover-audit-context">
             <div class="popover-section-label">
@@ -1424,7 +1461,6 @@ function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
 
     container.innerHTML = section1HTML + section2HTML;
 
-    // Attach Section 2 Fold Handler
     const foldBtn = document.getElementById('studioAuditFoldBtn');
     const scrollbox = document.getElementById('studioAuditScrollbox');
     if (foldBtn && scrollbox && !foldBtn.dataset.bound) {
@@ -1436,7 +1472,6 @@ function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
         });
     }
 
-    // Attach Slide Navigation Handlers
     const viewport = container.querySelector('.contract-cards-viewport');
     if (viewport && !viewport.dataset.bound) {
         viewport.dataset.bound = 'true';
@@ -1489,7 +1524,6 @@ function initCriteriaPopover(options = {}) {
         }
     };
 
-    // Initial render (unset empty values per spec)
     render(true);
 
     if (popoverTrigger) popoverTrigger.onclick = () => togglePopover(true);
@@ -1513,12 +1547,10 @@ function initCriteriaPopover(options = {}) {
         };
     }
 
-    // Expose globally for backward compatibility
     window.renderCriteriaPanel = function(crit, isInit) {
         renderCriteriaPopover(crit, isInit, { contractRegistry, contractSchema });
     };
 }
-
 
 // ============================================================================
 // 9.7 NATIVE UNIVERSAL DATAGRID & MULTI-DOMAIN TAB ENGINE (PHASE 3 FIXED)
@@ -1538,7 +1570,6 @@ function computeGridAggregate(data, col, type) {
     if (type === 'OFF' || !type) return '-';
     if (type === 'COUNT') return (data ? data.length : 0).toLocaleString();
 
-    // Robust parsing: handles native numbers and stringified floats/integers
     const vals = (data || [])
         .map(r => r[col])
         .filter(v => v !== null && v !== undefined && v !== '')
@@ -1569,7 +1600,6 @@ function renderDataGrid(options = {}) {
     const container = document.getElementById(outletId);
     if (!container) return;
 
-    // Normalization: check configs first (from registry re-renders), then domains, then domain
     let domainConfigs = [];
     if (Array.isArray(options.configs) && options.configs.length > 0) {
         domainConfigs = options.configs;
@@ -1586,7 +1616,6 @@ function renderDataGrid(options = {}) {
 
     if (domainConfigs.length === 0) return;
 
-    // Persist registry state
     if (!_gridRegistry[componentId]) {
         _gridRegistry[componentId] = {
             outletId,
@@ -1607,7 +1636,6 @@ function renderDataGrid(options = {}) {
 
     let rawData = currentConfig.data || [];
 
-    // 1. Search Filter
     if (state.searchTerm) {
         const term = state.searchTerm.toLowerCase();
         rawData = rawData.filter(row => {
@@ -1615,7 +1643,6 @@ function renderDataGrid(options = {}) {
         });
     }
 
-    // 2. Sorting
     if (state.sortKey) {
         rawData = [...rawData].sort((a, b) => {
             const valA = a[state.sortKey] !== undefined ? a[state.sortKey] : '';
@@ -1627,7 +1654,6 @@ function renderDataGrid(options = {}) {
         });
     }
 
-    // 3. Resolve Columns
     let columns = [];
     if (Array.isArray(currentConfig.columns)) {
         columns = currentConfig.columns.map(c => typeof c === 'object' ? (c.field || c.name || c.key) : c);
@@ -1637,7 +1663,6 @@ function renderDataGrid(options = {}) {
         columns = Object.keys(rawData[0]);
     }
 
-    // 4. Tab Bar (for multi-domain setups)
     let tabsHTML = '';
     if (reg.configs.length > 1) {
         tabsHTML = '<div class="datagrid-domain-tabs" style="display: flex; gap: 4px; margin-right: 12px;">';
@@ -1651,7 +1676,6 @@ function renderDataGrid(options = {}) {
         tabsHTML += '</div>';
     }
 
-    // 5. Toolbar
     let toolbarHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(125,125,125,0.03); border-bottom: 1px solid rgba(125,125,125,0.12); font-size: 12px; position: sticky; top: 0; z-index: 12; backdrop-filter: blur(8px);">
             <div style="display: flex; align-items: center;">
@@ -1665,7 +1689,6 @@ function renderDataGrid(options = {}) {
         </div>
     `;
 
-    // 6. Header
     let theadHTML = `
         <thead style="position: sticky; top: 31px; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-bottom: 1px solid rgba(125,125,125,0.2);">
             <tr>
@@ -1679,7 +1702,6 @@ function renderDataGrid(options = {}) {
     });
     theadHTML += `</tr></thead>`;
 
-    // 7. Body
     let tbodyHTML = '<tbody>';
     if (rawData.length === 0) {
         tbodyHTML += `<tr><td colspan="${columns.length}" style="text-align: center; padding: 24px; opacity: 0.6; font-size: 12px;">No matching records found.</td></tr>`;
@@ -1699,7 +1721,6 @@ function renderDataGrid(options = {}) {
     }
     tbodyHTML += '</tbody>';
 
-    // 8. Footer Aggregates
     let tfootHTML = `
         <tfoot style="position: sticky; bottom: 0; z-index: 10; backdrop-filter: blur(8px); background: rgba(125,125,125,0.06); color: inherit; border-top: 1px solid rgba(125,125,125,0.2);">
             <tr>
@@ -1736,7 +1757,6 @@ function renderDataGrid(options = {}) {
         </div>
     `;
 
-    // 9. Mount into Chassis
     let chassisNode = container.querySelector('.ui-proposal-chassis');
     if (!chassisNode && typeof createChassisComponent === 'function') {
         container.innerHTML = '';
@@ -1753,7 +1773,6 @@ function renderDataGrid(options = {}) {
         if (bodyElem) bodyElem.innerHTML = tableHTML;
     }
 
-    // 10. Modal Sync
     const modal = document.getElementById('ui-global-enlargement-modal');
     if (modal && (modal.classList.contains('is-active') || modal.classList.contains('active') || modal.offsetWidth > 0)) {
         const titleObj = modal.querySelector('#ui-modal-title-text');
@@ -1768,7 +1787,6 @@ function renderDataGrid(options = {}) {
 if (typeof document !== 'undefined' && !window._gridEventsBound) {
     window._gridEventsBound = true;
 
-    // 1. Tab Switching
     document.addEventListener('click', (e) => {
         const tabBtn = e.target.closest('.datagrid-domain-tab-btn');
         if (tabBtn) {
@@ -1781,7 +1799,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
             return;
         }
 
-        // 2. Sorting
         const th = e.target.closest('th[data-sort]');
         if (th) {
             const gridId = th.getAttribute('data-grid-id');
@@ -1798,7 +1815,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
             return;
         }
 
-        // 3. Aggregate Pill Click (Shows Select)
         const pill = e.target.closest('.agg-result-pill');
         if (pill) {
             pill.style.display = 'none';
@@ -1810,7 +1826,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 
-    // 4. Aggregate Value Commit (On Change)
     document.addEventListener('change', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const gridId = e.target.getAttribute('data-grid-id');
@@ -1827,7 +1842,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 
-    // 5. Aggregate Select Styling (Theme Adaptive)
     document.addEventListener('focusin', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const isLight = document.body.classList.contains('light-mode');
@@ -1837,7 +1851,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     });
 
-    // 6. Aggregate Dismissal (On Blur with Delay to permit Change)
     document.addEventListener('blur', (e) => {
         if (e.target.classList.contains('agg-col-select')) {
             const sel = e.target;
@@ -1849,7 +1862,6 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
         }
     }, true);
 
-    // 7. Search Filter Input with Focus Preservation
     document.addEventListener('input', (e) => {
         if (e.target.classList.contains('fx-table-filter')) {
             const gridId = e.target.getAttribute('data-grid-id');
@@ -1870,13 +1882,12 @@ if (typeof document !== 'undefined' && !window._gridEventsBound) {
     });
 }
 
-
 // ============================================================================
 // 9.8 NATIVE STATIC CANVAS SHELL MOUNT ENGINE
 // ============================================================================
 
 function mountCanvasShell() {
-    if (document.getElementById('globalCanvasShell')) return; // Exit if already mounted
+    if (document.getElementById('globalCanvasShell')) return;
 
     const shellHTML = `
         <!-- ZONE 1: System Admin Control Bar -->
@@ -1976,6 +1987,11 @@ function mountCanvasShell() {
     `;
 
     document.body.insertAdjacentHTML('afterbegin', shellHTML);
+
+    const initialSchema = window.CONTRACT_SCHEMA || (window.CONTRACT_REGISTRY ? Object.values(window.CONTRACT_REGISTRY)[0] : null);
+    if (initialSchema) {
+        hydrateProfileIdentity(initialSchema);
+    }
 }
 
 // ============================================================================
@@ -2003,9 +2019,8 @@ window.PlatformRuntime = {
     initCriteriaPopover,
     renderDataGrid,
     getDomainState,
-    mountCanvasShell
-    
+    mountCanvasShell,
+    hydrateProfileIdentity
 };
 
-// Declares PlatformRuntime in top-level scope to prevent ReferenceError
 var PlatformRuntime = window.PlatformRuntime;
