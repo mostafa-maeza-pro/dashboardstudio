@@ -1,5 +1,5 @@
 /**
- * PlatformRuntime.js V3.11
+ * PlatformRuntime.js V3.12
  * Universal Financial UI Chassis & High-Impact Charting Engine
  * Calypso Dashboard Studio
  */
@@ -7,6 +7,23 @@
 // ============================================================================
 // 1. LIFECYCLE, IDENTITY & THEME STATE MANAGEMENT
 // ============================================================================
+
+function toSafeDomId(value, fallback = 'item') {
+    const normalized = String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    return normalized || fallback;
+}
+
+function escapeHtmlAttr(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
 
 function initializeThemeDefault() { 
     document.body.classList.add('dark-mode'); 
@@ -205,7 +222,7 @@ function mergeCriteriaParameters(explicitParams = [], contractRegistry = {}) {
 
         if (!paramMap.has(canonicalKey)) {
             paramMap.set(canonicalKey, {
-                id: p.id || `param-${fieldKey}`,
+                id: p.id || `param-${toSafeDomId(fieldKey)}`,
                 field: fieldKey,
                 label: p.label || fieldKey.replace(/_/g, ' '),
                 type: p.type || 'String',
@@ -1377,28 +1394,32 @@ function renderCriteriaPopover(criteria = [], isInitial = false, options = {}) {
     if (mergedParams.length === 0) {
         section1HTML += `<div style="font-size: 11px; opacity: 0.6; padding: 4px 0;">No adjustable parameters specified.</div>`;
     } else {
-        mergedParams.forEach(p => {
+        mergedParams.forEach((p, idx) => {
             const val = getValueForField(p);
+            const fieldId = `studio-crit-${toSafeDomId(p.field)}-${idx}`;
+            const safeFieldAttr = escapeHtmlAttr(p.field);
+            const safeValAttr = escapeHtmlAttr(val);
+
             section1HTML += `<div class="studio-form-group criteria-input-field">`;
-            section1HTML += `<label class="studio-form-label">${p.label || p.field}</label>`;
+            section1HTML += `<label class="studio-form-label" for="${fieldId}">${p.label || p.field}</label>`;
 
             if (p.options && Array.isArray(p.options) && p.options.length > 0) {
-                section1HTML += `<select class="studio-form-select" data-criteria-field="${p.field}">`;
+                section1HTML += `<select id="${fieldId}" name="${fieldId}" class="studio-form-select" data-criteria-field="${safeFieldAttr}">`;
                 p.options.forEach(opt => {
                     const optVal = typeof opt === 'object' ? opt.value : opt;
                     const optLabel = typeof opt === 'object' ? opt.label : opt;
                     const selected = String(optVal) === String(val) ? 'selected' : '';
-                    section1HTML += `<option value="${optVal}" ${selected}>${optLabel}</option>`;
+                    section1HTML += `<option value="${escapeHtmlAttr(optVal)}" ${selected}>${optLabel}</option>`;
                 });
                 section1HTML += `</select>`;
             } else if (p.widget === 'datetime-local' || p.type === 'Datetime') {
-                section1HTML += `<input type="datetime-local" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+                section1HTML += `<input id="${fieldId}" name="${fieldId}" type="datetime-local" class="studio-form-input" data-criteria-field="${safeFieldAttr}" value="${safeValAttr}">`;
             } else if (p.widget === 'date' || p.type === 'Date') {
-                section1HTML += `<input type="date" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+                section1HTML += `<input id="${fieldId}" name="${fieldId}" type="date" class="studio-form-input" data-criteria-field="${safeFieldAttr}" value="${safeValAttr}">`;
             } else if (p.widget === 'number' || p.type === 'Number') {
-                section1HTML += `<input type="number" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+                section1HTML += `<input id="${fieldId}" name="${fieldId}" type="number" class="studio-form-input" data-criteria-field="${safeFieldAttr}" value="${safeValAttr}">`;
             } else {
-                section1HTML += `<input type="text" class="studio-form-input" data-criteria-field="${p.field}" value="${val}">`;
+                section1HTML += `<input id="${fieldId}" name="${fieldId}" type="text" class="studio-form-input" data-criteria-field="${safeFieldAttr}" value="${safeValAttr}">`;
             }
             section1HTML += `</div>`;
         });
@@ -1663,6 +1684,11 @@ function renderDataGrid(options = {}) {
         columns = Object.keys(rawData[0]);
     }
 
+    const safeGridId = toSafeDomId(componentId, 'datagrid');
+    const safeDomainId = toSafeDomId(domain, 'default');
+    const safeGridAttr = escapeHtmlAttr(componentId);
+    const safeDomainAttr = escapeHtmlAttr(domain);
+
     let tabsHTML = '';
     if (reg.configs.length > 1) {
         tabsHTML = '<div class="datagrid-domain-tabs" style="display: flex; gap: 4px; margin-right: 12px;">';
@@ -1671,11 +1697,12 @@ function renderDataGrid(options = {}) {
             const activeStyle = isActive
                 ? 'background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid #38bdf8;'
                 : 'background: transparent; color: inherit; border: 1px solid rgba(125,125,125,0.2); opacity: 0.75;';
-            tabsHTML += `<button type="button" class="datagrid-domain-tab-btn ${isActive ? 'active' : ''}" data-grid-id="${componentId}" data-domain="${cfg.domain}" style="border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; ${activeStyle}">${cfg.label || cfg.domain}</button>`;
+            tabsHTML += `<button type="button" class="datagrid-domain-tab-btn ${isActive ? 'active' : ''}" data-grid-id="${safeGridAttr}" data-domain="${escapeHtmlAttr(cfg.domain)}" style="border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; ${activeStyle}">${cfg.label || cfg.domain}</button>`;
         });
         tabsHTML += '</div>';
     }
 
+    const searchInputId = `${safeGridId}-search-${safeDomainId}`;
     let toolbarHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; background: rgba(125,125,125,0.03); border-bottom: 1px solid rgba(125,125,125,0.12); font-size: 12px; position: sticky; top: 0; z-index: 12; backdrop-filter: blur(8px);">
             <div style="display: flex; align-items: center;">
@@ -1684,7 +1711,7 @@ function renderDataGrid(options = {}) {
             </div>
             <div style="display: flex; align-items: center; gap: 4px;">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.6;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                <input type="text" class="fx-table-filter studio-form-input" placeholder="Search records..." value="${state.searchTerm || ''}" data-grid-id="${componentId}" data-domain="${domain}" style="padding: 2px 6px; font-size: 11px; width: 160px;">
+                <input type="text" id="${searchInputId}" name="${searchInputId}" aria-label="Search ${safeDomainAttr} records" autocomplete="off" class="fx-table-filter studio-form-input" placeholder="Search records..." value="${escapeHtmlAttr(state.searchTerm || '')}" data-grid-id="${safeGridAttr}" data-domain="${safeDomainAttr}" style="padding: 2px 6px; font-size: 11px; width: 160px;">
             </div>
         </div>
     `;
@@ -1698,7 +1725,7 @@ function renderDataGrid(options = {}) {
         const icon = isSorted ? (state.sortDir === 1 ? '▲' : '▼') : '⇅';
         const opacity = isSorted ? '1' : '0.4';
         const color = isSorted ? '#38bdf8' : 'inherit';
-        theadHTML += `<th data-grid-id="${componentId}" data-domain="${domain}" data-sort="${col}" style="padding: 6px 12px; text-align: left; cursor: pointer; color: ${color}; white-space: nowrap; font-size: 11px;">${col} <span class="sort-icon" style="opacity: ${opacity}; font-size: 10px; margin-left: 4px;">${icon}</span></th>`;
+        theadHTML += `<th data-grid-id="${safeGridAttr}" data-domain="${safeDomainAttr}" data-sort="${escapeHtmlAttr(col)}" style="padding: 6px 12px; text-align: left; cursor: pointer; color: ${color}; white-space: nowrap; font-size: 11px;">${col} <span class="sort-icon" style="opacity: ${opacity}; font-size: 10px; margin-left: 4px;">${icon}</span></th>`;
     });
     theadHTML += `</tr></thead>`;
 
@@ -1731,11 +1758,13 @@ function renderDataGrid(options = {}) {
         } else {
             const aggType = state.aggregates[col] || 'OFF';
             const aggResult = computeGridAggregate(rawData, col, aggType);
+            const aggSelectId = `${safeGridId}-agg-${safeDomainId}-${toSafeDomId(col, 'col')}-${idx}`;
+            const safeColAttr = escapeHtmlAttr(col);
             const pillHTML = aggType === 'OFF'
                 ? `<span class="agg-result-pill" style="opacity: 0.35; font-family: monospace; cursor: pointer;">-</span>`
                 : `<button type="button" class="agg-result-pill" style="background: rgba(125, 125, 125, 0.08); border: none; font-weight: 700; color: inherit; cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 11px;">${aggResult}</button>`;
 
-            let selectHTML = `<select class="agg-col-select" data-grid-id="${componentId}" data-domain="${domain}" data-col="${col}" style="display: none; font-size: 10px; padding: 2px; border-radius: 4px;">`;
+            let selectHTML = `<select id="${aggSelectId}" name="${aggSelectId}" aria-label="Aggregate function for ${safeColAttr}" class="agg-col-select" data-grid-id="${safeGridAttr}" data-domain="${safeDomainAttr}" data-col="${safeColAttr}" style="display: none; font-size: 10px; padding: 2px; border-radius: 4px;">`;
             ['OFF', 'SUM', 'AVG', 'COUNT'].forEach(opt => {
                 selectHTML += `<option value="${opt}" ${opt === aggType ? 'selected' : ''}>${opt}</option>`;
             });
@@ -1905,7 +1934,7 @@ function mountCanvasShell() {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
                         Upload Data File(s)
                     </label>
-                    <input type="file" id="devFileInput" accept=".contract,.data,.json" multiple>
+                    <input type="file" id="devFileInput" name="devFileInput" accept=".contract,.data,.json" multiple>
                 </div>
 
                 <div class="user-menu-container" id="userMenuWrapper">
@@ -2017,7 +2046,7 @@ window.PlatformRuntime = {
     initFromUrlHash,
     initPlatform,
     initCriteriaPopover,
-    renderCriteriaPopover, // <-- Add this line
+    renderCriteriaPopover,
     renderDataGrid,
     getDomainState,
     mountCanvasShell,
