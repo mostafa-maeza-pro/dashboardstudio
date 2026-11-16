@@ -2017,6 +2017,7 @@ window.PlatformRuntime = {
     initFromUrlHash,
     initPlatform,
     initCriteriaPopover,
+    renderCriteriaPopover, // <-- Add this line
     renderDataGrid,
     getDomainState,
     mountCanvasShell,
